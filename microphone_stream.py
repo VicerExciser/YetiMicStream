@@ -14,6 +14,11 @@ from multiprocessing import Process, Queue, Lock, Value
 from urllib3.exceptions import NewConnectionError
 
 
+cdn_url = os.getenv('CDNURL', 'localhost')  #'pipeline-cdn.telemetry.svc.kube.local')
+cdn_port = os.getenv('CDNPORT', '5000')
+
+# -------------------------------------------------------------------------------------
+
 class MockSensorBase():
 	@staticmethod
 	def _get_timestamp():
@@ -24,6 +29,7 @@ class MockSensorBase():
 			dt.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3]
 		)
 
+# -------------------------------------------------------------------------------------
 
 class MockLogger():
 	def __init__(self, name):
@@ -41,6 +47,10 @@ class MockLogger():
 	def info(self, msg):
 		self.log_to_console(f'[INFO]  {msg}')
 
+	def critical(self, msg):
+		self.log_to_console(f'[INFO]  {msg}')
+
+# -------------------------------------------------------------------------------------
 
 class Microphone():
 	def __init__(self, mic_number):
@@ -131,6 +141,10 @@ class Microphone():
 			self.my_logger.error(e)
 
 
+	def update_state(self, new_state):
+		self._state = new_state
+		print(f"[update_state]  NEW STATE: {new_state}")
+
 
 	"""
 		Audio Thread Methods
@@ -202,6 +216,7 @@ class Microphone():
 										 frames_per_buffer=self.CHUNK,
 										 input_device_index=self.mic_index)
 
+
 	"""
 		Hashing Wav Thread Methods
 		Note: This is used in the main thread
@@ -215,6 +230,7 @@ class Microphone():
 				frame = frame_q.get()
 				self.make_wav(frame)
 				self.hash_rename(post_queue, frame[calibrate_flag_idx])
+
 
 	def make_wav(self, frames, output_name='output.wav'):
 		"""
@@ -372,6 +388,7 @@ class Microphone():
 		if notify:
 			self.my_logger.warning("Residual .wav(s) found! Files sent to the CDN posting queue...")
 
+
 	@staticmethod
 	def truncate(f, n):
 		"""Truncates/pads a float f to n decimal places without rounding"""
@@ -380,6 +397,7 @@ class Microphone():
 			return '{0:.{1}f}'.format(f, n)
 		i, p, d = s.partition('.')
 		return float('.'.join([i, (d + '0' * n)[:n]]))
+
 
 	def do_reboot(self, validated_message):
 		self.do_activate(validated_message)
@@ -394,6 +412,7 @@ class Microphone():
 		self.set_ready(False)
 		self.update_state("Deactivated")
 
+
 	def shutdown(self):
 		self.p.terminate()
 		self.streaming_process.join(timeout=5)
@@ -401,6 +420,7 @@ class Microphone():
 		self.hash_process.join(timeout=5)
 		self.audio_process.join(timeout=5)
 		# super(MicrophoneSensor, self).shutdown()
+
 
 	def do_parse_control_message(self, validated_message):
 		self.my_logger.info(f'Received: {validated_message}')
@@ -433,10 +453,12 @@ class Microphone():
 		except Exception as e:
 			self.my_logger.warning(e)
 
+
 	def send_acknowledgement(self, command, message_reference):
-		self.send_alert(model.AlertMessageSubtypes.Acknowledgement.value, 6, 2, 'Command Acknowledgement',
-						f"Acknowledgement of: {command}", None, [message_reference])
+		# self.send_alert(model.AlertMessageSubtypes.Acknowledgement.value, 6, 2, 'Command Acknowledgement',
+		# 				f"Acknowledgement of: {command}", None, [message_reference])
 		self.my_logger.info('Acknowledgement Sent')
+
 
 	def update_file_duration(self, next_duration):
 		"""
@@ -445,7 +467,6 @@ class Microphone():
 		This function should only ever be called when the recording length or multiplier have changed.
 		Input validation is performed in the do_parse_control_message() function.
 		"""
-
 		self.my_logger.info('update_file_duration: Acquiring recording duration lock...')
 		self.duration_lock.acquire()  # blocking
 		self.my_logger.info('update_file_duration: Recording duration lock acquired.\nUpdating recording duration...')
@@ -459,6 +480,8 @@ class Microphone():
 			self.duration_update = True  # tells the get_audio Process to grab the new duration
 			self.my_logger.info('New recording duration set.')
 
+
+# -------------------------------------------------------------------------------------
 
 if __name__ == "__main__":
 	while True:
@@ -474,22 +497,25 @@ if __name__ == "__main__":
 			sensor.hash_process.start()
 			sensor.my_logger.info("Starting Posting Process")
 			sensor.posting_process.start()
+			sensor.my_logger.info("Starting Streaming Process")
+			sensor.streaming_process.start()
 
 			while True:
 				if not sensor.kafka_hash_q.empty():
 					data = sensor.kafka_hash_q.get()
 					if data['details']['calibration_flag']:
 						sensor.update_state("Recording_")
-						sensor.send_alert(model.AlertMessageSubtypes.Status.value, 5, 2,
-										  'Microphone Calibration CDN Hash',
-										  data['text'],
-										  data['details'])
+						# sensor.send_alert(model.AlertMessageSubtypes.Status.value, 5, 2,
+						# 				  'Microphone Calibration CDN Hash',
+						# 				  data['text'],
+						# 				  data['details'])
 						sensor.my_logger.info(f"Calibration Alert sent to Kafka: {data['text']}")
 					else:
-						sensor.send_alert(model.AlertMessageSubtypes.Status.value, 5, 2, 'Microphone CDN Hash',
-										  data['text'],
-										  data['details'])
+						# sensor.send_alert(model.AlertMessageSubtypes.Status.value, 5, 2, 'Microphone CDN Hash',
+						# 				  data['text'],
+						# 				  data['details'])
 						sensor.my_logger.info(f"Hash Alert sent to Kafka: {data['text']}")
+
 			# do sensor.shutdown()?
 			# break out of the container while loop / raise an exception to restart container?
 		except KeyboardInterrupt:
