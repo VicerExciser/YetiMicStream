@@ -302,8 +302,14 @@ class Microphone():
 		:return:
 		"""
 		self.my_logger.info('Posting Process Successfully Started')
+		failed_post_attempts = 0
 		while True:
 			while not post_queue.empty():
+
+				if failed_post_attempts > 4:
+					self.my_logger.info('post_cdn incurred too many connection errors -- cancelling operation now.')
+					break
+
 				self.my_logger.info('Posting to the CDN')
 				# get the message from the post_queue
 				message = post_queue.get()
@@ -314,6 +320,7 @@ class Microphone():
 				sha = message["sha"]
 				start_time = message["start_t"]
 				end_time = message["end_t"]
+				
 				try:
 					files = {'files': open(filename, 'rb')}
 					response = requests.post(f'http://{cdn_url}:{cdn_port}/upload', files=files)
@@ -322,6 +329,7 @@ class Microphone():
 					# Ensure SHA posted matches the current file's SHA
 					if fileid != sha:
 						self.my_logger.error(f'SHA mismatch error!: file:{sha}, POST:{fileid}')
+
 					confirmation = requests.get(f'http://{cdn_url}:{cdn_port}/{fileid}')
 					if str(confirmation.status_code) != '200':
 						self.my_logger.error(f'Upload error: HTTP {confirmation.status_code}')
@@ -362,6 +370,8 @@ class Microphone():
 						temp_q.put(self.post_queue.get())
 					self.post_queue = temp_q
 
+					failed_post_attempts += 1
+
 				except Exception as e:
 					self.my_logger.error(f'\npostCDN exception: {e}\n')
 					tb = traceback.format_exc()
@@ -373,6 +383,8 @@ class Microphone():
 					while not self.post_queue.empty():
 						temp_q.put(self.post_queue.get())
 					self.post_queue = temp_q
+
+					failed_post_attempts += 1
 
 
 	def wav_check(self, post_queue):
