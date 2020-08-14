@@ -1,7 +1,7 @@
 import datetime as dt
 import time
 import wave
-import pyaudio
+import pyaudio  # <-- Note: Requires `sudo apt-get install -y python3-pyaudio` for __portaudio shared object files
 import sys
 import requests
 import traceback
@@ -87,7 +87,7 @@ class Microphone():
 		self.RATE = 44100
 		self.mic_index = None
 
-		 while self.mic_index == None:
+		while self.mic_index == None:
 			self.p = pyaudio.PyAudio()
 			# Get hardware index from microphone name
 			self.my_logger.info('Getting sound device info...')
@@ -97,7 +97,7 @@ class Microphone():
 			for i in range(0, numdevices):
 				if (self.p.get_device_info_by_host_api_device_index(0, i).get('maxInputChannels')) > 0:
 					try:
-						# self.my_logger.info(self.p.get_device_info_by_index(i))  # uncomment to see all devices
+						self.my_logger.info(self.p.get_device_info_by_index(i))  # uncomment to see all devices
 						# checks each device index to see if it is labeled as Blue Yeti
 						if 'Yeti' in self.p.get_device_info_by_index(i)['name']:
 							self.mic_index = self.p.get_device_info_by_index(i)['index']
@@ -143,7 +143,7 @@ class Microphone():
 
 	def update_state(self, new_state):
 		self._state = new_state
-		print(f"[update_state]  NEW STATE: {new_state}")
+		print(f"\n[update_state]  NEW STATE: {new_state}")
 
 
 	"""
@@ -257,6 +257,7 @@ class Microphone():
 		wave_file.writeframes(b''.join(frames))
 		wave_file.close()
 
+
 	def hash_rename(self, post_queue, calibration_flag=False):
 		"""
 		Changes the name of the output wav to be the computed sha1 hash + .wav
@@ -274,6 +275,7 @@ class Microphone():
 		except Exception as e:
 			self.my_logger.error("Exception in hash_rename: {}".format(e))
 
+
 	def add_to_post_q(self, post_queue, filename, calibration_flag=False):
 		filesize = os.path.getsize(self.filename)
 		# put all the data into the posting queue as a dictionary for easy unpacking
@@ -288,6 +290,7 @@ class Microphone():
 		# Clear the start and end timestamps
 		self.start_time = ''
 		self.end_time = ''
+
 
 	"""
 		Posting Thread Method
@@ -406,10 +409,11 @@ class Microphone():
 		self.do_reboot(validated_message)
 
 	def do_activate(self, validated_message):
-		self.set_ready(True)  # calls cnc_base's send_heartbeat()
+		# self.set_ready(True)  # calls cnc_base's send_heartbeat()
+		pass
 
 	def do_deactivate(self, validated_message):
-		self.set_ready(False)
+		# self.set_ready(False)
 		self.update_state("Deactivated")
 
 
@@ -481,6 +485,16 @@ class Microphone():
 			self.my_logger.info('New recording duration set.')
 
 
+
+	"""
+		Streaming Thread Method
+	"""
+	def stream_audio(self, post_queue, kafka_hash_q):
+		"""  TODO  """
+		pass
+
+
+
 # -------------------------------------------------------------------------------------
 
 if __name__ == "__main__":
@@ -489,8 +503,8 @@ if __name__ == "__main__":
 		try:
 			room = os.environ.get('ROOM', 'UnknownRoom')
 			mic_number = os.environ.get('MIC_NUM', '-1')
-			sensor = Microphone(room, int(mic_number))
-			sensor.start()
+			sensor = Microphone(int(mic_number))
+			# sensor.start()
 			sensor.my_logger.info('Starting Audio Process')
 			sensor.audio_process.start()
 			sensor.my_logger.info('Starting Hash Process')
