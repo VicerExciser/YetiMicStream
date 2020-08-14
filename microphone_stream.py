@@ -303,12 +303,13 @@ class Microphone():
 		"""
 		self.my_logger.info('Posting Process Successfully Started')
 		failed_post_attempts = 0
+
 		while True:
 			while not post_queue.empty():
 
 				if failed_post_attempts > 4:
 					self.my_logger.info('post_cdn incurred too many connection errors -- cancelling operation now.')
-					break
+					return
 
 				self.my_logger.info('Posting to the CDN')
 				# get the message from the post_queue
@@ -503,7 +504,24 @@ class Microphone():
 	"""
 	def stream_audio(self, post_queue, kafka_hash_q):
 		"""  TODO  """
-		pass
+		self.my_logger.info('Streaming Process Successfully Starting')
+		while True:
+			while not post_queue.empty():
+				self.my_logger.info('Streaming .wav audio to the live feed URL')
+				# get the message from the post_queue
+				message = post_queue.get()
+				# get the associated info from the message
+                calibration_flag = message["calibration"]
+                filename = message["filename"]
+                filesize = message["file_size"]
+                sha = message["sha"]
+                start_time = message["start_t"]
+                end_time = message["end_t"]
+
+                try:
+                    files = {'files': open(filename, 'rb')}
+
+                ...
 
 
 

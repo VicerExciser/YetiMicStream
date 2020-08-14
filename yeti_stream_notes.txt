@@ -1,0 +1,91 @@
+LIBVLC INFO
+
+- plug-in modules:  /usr/lib/arm-linux-gnueabihf/vlc/plugins
+- config file:  /home/pi/.config/vlc/vlcrc
+- RTSP error:  'no sout stream module matching "rtsp": 23 candidates'
+-- ^^ use 'rtp' (Real-time Transport Protocol) instead of 'rstp'
+
+Sample audio stream command:
+$  cvlc -vvv [input_stream] --sout '#rtp{dst=[ip_address],port=[port_num],sdp=rtp://[server_address]:8080/test.sdp'
+
+^ input_stream:  could be a file or playlist of files (e.g., '*.wav')
+^ ip_address:  of the Pi
+^ port_num:  something like 1234
+^ server_address:  could be same as ip_address; optionally set the last octet to 255 so that the stream can be received on every computer on the LAN/subnet
+
+
+_____________________________________________________________________________________________________
+YETI MIC INFO
+
+(from `lsusb`):
+- Bus 001 Device 006:  ID b58e:9e84 Blue Microphone Yeti Stereo Microphone
+
+(from `/proc/asound/`):
+- The Yeti microphone is identified as `/proc/asound/Microphone/`  == `/proc/asound/card2/`
+-- (file)  id = Microphone
+-- (file)  usbid = b58e:9e84
+-- (file)  usbbus = 001/006
+-- (file)  usbmixer = USB Mixer: usb_id=0xb58e9e84, ctrlif=0, ctlerr=0
+					  Card: Blue Microphones Yeti Stereo Microphone at usb-3f980000.usb-1.1.3, full speed
+					  (... more superfluous details included ...)
+-- (file)  stream0 = Blue Microphones Yeti Stereo Microphone at usb-3f980000.usb-1.1.3, full speed : USB Audio
+					 
+					 Playback:
+					 	Status: Stop
+					 	Interface 1
+					 		Altset 1
+					 		Format: S16_LE
+					 		Channels: 2
+					 		Endpoint: 1 OUT (SYNC)
+					 		Rates: 44100, 48000
+
+					 Capture:
+					 	Status: Stop
+					 	Interface 2
+					 		Altset 1
+					 		Format: S16_LE
+					 		Channels: 2
+					 		Endpoint: 2 IN (ASYNC)
+					 		Rates: 44100, 48000
+-- (dir)  pcm0c/
+---- (file)  /info = card: 2, device: 0, subdevice: 0, stream: CAPTURE, id: USB Audio, name: USB Audio, ...
+---- (dir)   /sub0/
+------ (file)    /hw_params = closed
+------ (file)    /sw_params = closed
+------ (file)    /status = closed
+
+
+To get even more information, run:
+$  aplay -l
+
+
+To get the name of the device programmatically:
+	(python)
+	import os
+	device_name = [l[l.index('[')+1:l.index(']')].strip() for l in os.popen('cat /proc/asound/cards').read().split('\n') if 'Yeti' in l and '[' in l][0]
+	(end_python)
+
+	(bash)
+	DEVNAME=$(aplay -l | grep Yeti | cut -d':' -f2 | cut -d'[' -f1 | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+	(end_bash)
+
+
+
+For gstreamer:
+$  sudo apt-get install -y libgstreamer1.0-0 gstreamer1.0-tools
+
+To make a 10 second audio recording at a samplerate of 16000 bit/s via the microphone run:
+$  arecord -D plughw:Microphone -r 16000 test.wav -d 10
+
+To play it back:
+$  aplay -D plughw:Microphone test.wav
+
+To stream the audio run:
+$  gst-launch-1.0 -v alsasrc device=plughw:Microphone ! mulawenc ! rtppcmupay ! udpsink host=clientIp port=5001
+
+^ Replace the clientIp with your computers ip address. Normally I just set the end to 255, so it can be received on every computer on the network, for instance I set mine to: 10.0.0.255.
+
+To receive the audio on your computer:
+$  gst-launch-1.0 -v udpsrc port=5001 caps="application/x-rtp" ! queue ! rtppcmudepay ! mulawdec ! audioconvert ! autoaudiosink sync=false
+
+If you experience dropouts you might want to add ‘num-buffers=1000’ just after ‘device=plughw:Microphone’ at the server side, but in my experience it actually works better by not using it.
