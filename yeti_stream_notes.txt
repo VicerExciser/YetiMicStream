@@ -89,3 +89,15 @@ To receive the audio on your computer:
 $  gst-launch-1.0 -v udpsrc port=5001 caps="application/x-rtp" ! queue ! rtppcmudepay ! mulawdec ! audioconvert ! autoaudiosink sync=false
 
 If you experience dropouts you might want to add ‘num-buffers=1000’ just after ‘device=plughw:Microphone’ at the server side, but in my experience it actually works better by not using it.
+
+
+======================
+
+Options:
+- VLC / cvlc
+- gstreamer
+- ffmpeg
+- omxplayer
+-->  To play an audio file w/ omxplayer (thru headphone jack):  $  omxplayer -o local example.py
+-->  To play an audio file w/ omxplayer (thru HDMI):  $  omxplayer -o hdmi example.py
+-->  To play an audio file w/ omxplayer (thru both outputs):  $  omxplayer -o both example.py
