@@ -55,6 +55,86 @@ YETI MIC INFO
 ------ (file)    /status = closed
 
 
+Information displayed from call to `arecord -D plughw:Microphone`:
+    Recording WAVE 'stdin' : Signed 16 bit Little Endian, Rate 44100 Hz, Stereo
+    Plug PCM: Hardware PCM card 2 'Yeti Stereo Microphone' device 0 subdevice 0
+    Its setup is:
+      stream       : CAPTURE
+      access       : RW_INTERLEAVED
+      format       : S16_LE
+      subformat    : STD
+      channels     : 2
+      rate         : 44100
+      exact rate   : 44100 (44100/1)
+      msbits       : 16
+      buffer_size  : 22050
+      period_size  : 5513
+      period_time  : 125011
+      tstamp_mode  : NONE
+      tstamp_type  : MONOTONIC
+      period_step  : 1
+      avail_min    : 5513
+      period_event : 0
+      start_threshold  : 1
+      stop_threshold   : 22050
+      silence_threshold: 0
+      silence_size : 0
+      boundary     : 1445068800
+      appl_ptr     : 0
+      hw_ptr       : 0
+
+
+(from `ffmpeg -sources`):
+Auto-detected sources for alsa:
+  null [Discard all samples (playback) or generate zero samples (capture)]
+  default:CARD=Microphone [Default Audio Device]
+  sysdefault:CARD=Microphone [Default Audio Device]
+  front:CARD=Microphone,DEV=0 [Front speakers]
+  surround21:CARD=Microphone,DEV=0 [2.1 Surround output to Front and Subwoofer speakers]
+  surround40:CARD=Microphone,DEV=0 [4.0 Surround output to Front and Rear speakers]
+  surround41:CARD=Microphone,DEV=0 [4.1 Surround output to Front, Rear and Subwoofer speakers]
+  surround50:CARD=Microphone,DEV=0 [5.0 Surround output to Front, Center and Rear speakers]
+  surround51:CARD=Microphone,DEV=0 [5.1 Surround output to Front, Center, Rear and Subwoofer speakers]
+  surround71:CARD=Microphone,DEV=0 [7.1 Surround output to Front, Center, Side, Rear and Woofer speakers]
+  iec958:CARD=Microphone,DEV=0 [IEC958 (S/PDIF) Digital Audio Output]
+  dmix:CARD=Microphone,DEV=0 [Direct sample mixing device]
+  dsnoop:CARD=Microphone,DEV=0 [Direct sample snooping device]
+  hw:CARD=Mi
+  crophone,DEV=0 [Direct hardware device without any conversions]
+  plughw:CARD=Microphone,DEV=0 [Hardware device with all software conversions]
+
+(from `ffmpeg -sinks`):
+Auto-detected sinks for alsa:
+  null [Discard all samples (playback) or generate zero samples (capture)]
+  default:CARD=b1 [Default Audio Device]
+  sysdefault:CARD=b1 [Default Audio Device]
+  dmix:CARD=b1,DEV=0 [Direct sample mixing device]
+  dsnoop:CARD=b1,DEV=0 [Direct sample snooping device]
+  hw:CARD=b1,DEV=0 [Direct hardware device without any conversions]
+  plughw:CARD=b1,DEV=0 [Hardware device with all software conversions]
+  default:CARD=Headphones [Default Audio Device]
+  sysdefault:CARD=Headphones [Default Audio Device]
+  dmix:CARD=Headphones,DEV=0 [Direct sample mixing device]
+  dsnoop:CARD=Headphones,DEV=0 [Direct sample snooping device]
+  hw:CARD=Headphones,DEV=0 [Direct hardware device without any conversions]
+  plughw:CARD=Headphones,DEV=0 [Hardware device with all software conversions]
+  default:CARD=Microphone [Default Audio Device]
+  sysdefault:CARD=Microphone [Default Audio Device]
+  front:CARD=Microphone,DEV=0 [Front speakers]
+  surround21:CARD=Microphone,DEV=0 [2.1 Surround output to Front and Subwoofer speakers]
+  surround40:CARD=Microphone,DEV=0 [4.0 Surround output to Front and Rear speakers]
+  surround41:CARD=Microphone,DEV=0 [4.1 Surround output to Front, Rear and Subwoofer speakers]
+  surround50:CARD=Microphone,DEV=0 [5.0 Surround output to Front, Center and Rear speakers]
+  surround51:CARD=Microphone,DEV=0 [5.1 Surround output to Front, Center, Rear and Subwoofer speakers]
+  surround71:CARD=Microphone,DEV=0 [7.1 Surround output to Front, Center, Side, Rear and Woofer speakers]
+  iec958:CARD=Microphone,DEV=0 [IEC958 (S/PDIF) Digital Audio Output]
+  dmix:CARD=Microphone,DEV=0 [Direct sample mixing device]
+  dsnoop:CARD=Microphone,DEV=0 [Direct sample snooping device]
+  hw:CARD=Microphone,DEV=0 [Direct hardware device without any conversions]
+  plughw:CARD=Microphone,DEV=0 [Hardware device with all software conversions]
+
+
+
 To get even more information, run:
 $  aplay -l
 
@@ -70,7 +150,7 @@ To get the name of the device programmatically:
 	(end_bash)
 
 
-
+_____________________________________________________________________________________________________
 For gstreamer:
 $  sudo apt-get install -y libgstreamer1.0-0 gstreamer1.0-tools
 
@@ -79,6 +159,9 @@ $  arecord -D plughw:Microphone -r 16000 test.wav -d 10
 
 To play it back:
 $  aplay -D plughw:Microphone test.wav
+
+For changing system sound settings (like the default audio input/output devices):
+$  amixer or alsamixer
 
 To stream the audio run:
 $  gst-launch-1.0 -v alsasrc device=plughw:Microphone ! mulawenc ! rtppcmupay ! udpsink host=clientIp port=5001
