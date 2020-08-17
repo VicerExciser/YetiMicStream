@@ -511,17 +511,17 @@ class Microphone():
 				# get the message from the post_queue
 				message = post_queue.get()
 				# get the associated info from the message
-                calibration_flag = message["calibration"]
-                filename = message["filename"]
-                filesize = message["file_size"]
-                sha = message["sha"]
-                start_time = message["start_t"]
-                end_time = message["end_t"]
+				calibration_flag = message["calibration"]
+				filename = message["filename"]
+				filesize = message["file_size"]
+				sha = message["sha"]
+				start_time = message["start_t"]
+				end_time = message["end_t"]
 
-                try:
-                    files = {'files': open(filename, 'rb')}
+				try:
+					files = {'files': open(filename, 'rb')}
 
-                ...
+				...
 
 
 

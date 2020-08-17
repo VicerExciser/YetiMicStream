@@ -152,7 +152,7 @@ To get the name of the device programmatically:
 
 _____________________________________________________________________________________________________
 For gstreamer:
-$  sudo apt-get install -y libgstreamer1.0-0 gstreamer1.0-tools
+$  sudo apt-get install -y gstreamer1.0-tools    #libgstreamer1.0-0   <-- should already be installed
 
 To make a 10 second audio recording at a samplerate of 16000 bit/s via the microphone run:
 $  arecord -D plughw:Microphone -r 16000 test.wav -d 10
@@ -177,10 +177,119 @@ If you experience dropouts you might want to add ‘num-buffers=1000’ just aft
 ======================
 
 Options:
-- VLC / cvlc
+- VLC / cvlc    (cvlc is a headless VLC CLI that is identical, minus the GUI)
 - gstreamer
 - ffmpeg
 - omxplayer
 -->  To play an audio file w/ omxplayer (thru headphone jack):  $  omxplayer -o local example.py
 -->  To play an audio file w/ omxplayer (thru HDMI):  $  omxplayer -o hdmi example.py
 -->  To play an audio file w/ omxplayer (thru both outputs):  $  omxplayer -o both example.py
+
+
+
+======================
+[Possibly] Required packges:
+  Apt:
+    gstreamer1.0-tools   *(if using `gst-launch-1.0` for stream/receive)
+    libgstreamer1.0-0    *(if not already installed)
+    python3-pyaudio      *(if `import pyaudio` raises error for missing __portaudio .so lib)
+    python3-vlc          *(if using VLC python bindings && not already installed)
+    libportaudio2        *(if not already installed)
+    python3-pyaudio      *(if not already installed)
+
+
+
+==================================================================
+=====  VLC Streaming Notes =======================================
+==================================================================
+# Start VLC as a multicast RTP server
+cvlc -vvv alsa://hw:2,0 \
+        --sout='#transcode{acodec=mp3,ab=128,channels=2,samplerate=44100}:rtp{mux=ts,dst=239.255.12.42,port=1234,sdp=sap,name="YetiAudioStream"}'\
+        --sout-keep
+
+
+^^ Note that 239.255.12.42 is a multicast IP address
+^^ Ensure the port number is an even number (1234 is default for RTP)
+
+
+^^ Note that this command specifies the use of SAP (Session Announcement Protocol), info below taken from https://wiki.videolan.org/SAP/:
+"""
+  SAP stands for Session Announcement Protocol.
+  It uses multicast to announce streams efficiently on a Local Area Network or on the MBONE: any computer on the network can receive announces from all others without any manual configuration.
+
+  SAP conveys SDP's to describe streams parameters. This can include an RTSP control URL to use for setting up the stream, or a multicast group address to subscribe to. The SDP also includes port numbers and audio/video codecs parameters, and a stream name, etc.
+
+  This technique allows a lot of server to emit streams (often multicasted) and announce them on the network. Clients on the network can then listen for these announces.
+  VLC can do this with the "SAP" service discovery plugin.
+  You then get a listing of all these streams and can simply tune into the stream of your choice.
+
+  Because SAP uses multicast (as do UPnP and Apple Bonjour), it can normally only operate on a Local area network.
+  Unless your computer is connected to the MBONE, you cannot use SAP to advertise your streams onto the Internet, nor can you receive streams from other places.
+"""
+
+^^ sap
+Use this option if you want VLC to send SAP (Session Announcement Protocol) announces. SAP is a service discovery protocol, that uses a special multicast address to send a list of available streams on a server. This option can only be enabled with the udp output method.
+
+
+^^ SDP (Session Description Protocol) format options available for VLC streams:
+- sdp=sap, to export the SDP using the SAP (Session Announcement Protocol, see RFC 2974).
+- sdp=file://<path to the file>, to export the SDP as a local file.
+- sdp=http://<local interface IP:port/path>, to make the file available using the integrated HTTP server of VLC.
+- sdp=rtsp://<local interface IP:port/path>, to make the SDP file available using the RTSP protocol (see RFC 2326).
+
+
+^^ More information on VLC CLI options related to RTP streaming:
+https://wiki.videolan.org/Documentation:Streaming_HowTo/Advanced_Streaming_Using_the_Command_Line/#rtp
+
+- mux:  Only `ts` is possible for RTP streams
+- dst:  The destination UDP address; can be the address of a host or a multicast group; this option must be given unless the `sdp=rtsp://` option is given, in which case the stream will be sent to the host doing the RTSP request
+
+
+^^ Regarding the `transcode` audio specifications:
+- acodec:  This option allows you to specify the codec the audio tracks of the input stream should be transcoded to.
+
+- ab:  This option allows to set the bitrate of the transcoded audio stream, in kbit/s.
+
+- aenc:  This allows to set the encoder to use to encode the audio stream. Available options are :
+  --> ffmpeg:  this is the libavcodec encoding module. It handles a large variety of different codecs (the list can be found on the streaming features page --> https://www.videolan.org/streaming-features.html).
+  --> vorbis:  This module uses the vorbis encoder from the Xiph.org project. Vorbis is a free, open, license-free lossy audio codec.
+    ---->  `quality=<quality level>` allows to use VBR (variable bitrate) encoding instead of the default CBR (constant bitrate), and to set the quality level (between 1 and 10, higher is better);
+    ---->  `max-bitrate=<bitrate in kbit/s>` allows to set the maximum bitrate, for vbr encoding;
+    ---->  `min-bitrate=<bitrate in kbit/s>` allows to set the minimum bitrate, for vbr encoding;
+    ---->  `cbr` allows to force cbr encoding.
+  --> speex:  This module uses the speex encoder from the Xiph.org project. Speex is a lossy audio codec, best fit for very low bitrates (around 10 kbit/s) and particularly video conferences.
+
+- samplerate:  This option allows to set the sample rate of the transcoded audio stream, in Hz. Reducing the sample rate is a way to lower the bitrate of the resulting audio stream.
+
+- channels:  This option allows to set the number of channels of the resulting audio stream. This is useful for codecs that don't have support for more than 2 channels, or to lower the bitrate of an audio stream.
+
+======================
+
+Receiving a network stream
+- To receive an unicast RTP/UDP stream (sent by VLC's stream output), start VLC with:
+    % vlc rtp://@:5004
+  
+  If 5004 is the port to which packets are sent. 1234 is another commonly used port number. 
+  If you use the default port (1234), vlc rtp:// will do.
+
+- To receive an multicast UDP/RTP stream (sent by VLC's stream output), start VLC with:
+    % vlc rtp://@multicast_address:port
+
+- To receive a SSM (source specific multicast) stream, you can use:
+    % vlc rtp://server_address@multicast_address:port
+  
+  This only works on OSs that support SSM (Windows XP and Linux).
+
+- To receive a HTTP stream, start VLC with:
+    % vlc http://www.example.org/your_file.mpg
+
+- To receive a RTSP stream, start VLC with: 
+    % vlc rtsp://www.example.org/your_stream
+
+- Receive a stream described by an SDP file:
+    % vlc -vvv http://server.example.org/stream.sdp
+
+
+If wanting to save the stream into file(s) as well, see information here:
+https://wiki.videolan.org/Documentation:Streaming_HowTo/Receive_and_Save_a_Stream/
+
