@@ -1,0 +1,12 @@
+mrl: alsa://hw:Microphone
+dest: 239.255.12.42
+port: 1234
+name: YetiMicStream
+acodec: mpga
+bitrate: 256
+channels: 2
+samplerate: 48000
+threads: 2
+proto: rtp
+mux: ts
+sdp: sap

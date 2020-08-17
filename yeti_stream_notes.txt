@@ -246,12 +246,17 @@ https://wiki.videolan.org/Documentation:Streaming_HowTo/Advanced_Streaming_Using
 
 
 ^^ Regarding the `transcode` audio specifications:
-- acodec:  This option allows you to specify the codec the audio tracks of the input stream should be transcoded to.
+- acodec:  This option allows you to specify the codec the audio tracks of the input stream should be transcoded to. 
+  --> Available `acodec` values:
+      - mpga  (recommended for portability -- `aac` will substitute to this)
+      - mp3  (recommended b/c doesn't have to convert audio from 's16l' --> 'f32l', which the next 2 options require)
+      - mp4a
+      - a52
 
 - ab:  This option allows to set the bitrate of the transcoded audio stream, in kbit/s.
 
 - aenc:  This allows to set the encoder to use to encode the audio stream. Available options are :
-  --> ffmpeg:  this is the libavcodec encoding module. It handles a large variety of different codecs (the list can be found on the streaming features page --> https://www.videolan.org/streaming-features.html).
+  --> ffmpeg:  this is the libavcodec encoding module. It handles a large variety of different codecs.
   --> vorbis:  This module uses the vorbis encoder from the Xiph.org project. Vorbis is a free, open, license-free lossy audio codec.
     ---->  `quality=<quality level>` allows to use VBR (variable bitrate) encoding instead of the default CBR (constant bitrate), and to set the quality level (between 1 and 10, higher is better);
     ---->  `max-bitrate=<bitrate in kbit/s>` allows to set the maximum bitrate, for vbr encoding;
@@ -293,3 +298,7 @@ Receiving a network stream
 If wanting to save the stream into file(s) as well, see information here:
 https://wiki.videolan.org/Documentation:Streaming_HowTo/Receive_and_Save_a_Stream/
 
+
+======================
+Configurations & Effects:
+- Lower bitrate (`ab`) results in poorer quality with little-to-no improvement in latency
