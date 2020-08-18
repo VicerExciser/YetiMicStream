@@ -14,6 +14,8 @@ from multiprocessing import Process, Queue, Lock, Value
 from urllib3.exceptions import NewConnectionError
 
 
+SKIP_POST_CDN = True
+
 cdn_url = os.getenv('CDNURL', 'localhost')  #'pipeline-cdn.telemetry.svc.kube.local')
 cdn_port = os.getenv('CDNPORT', '5000')
 
@@ -124,7 +126,7 @@ class Microphone():
 		self.my_logger.info('Initializing Posting Process')
 		self.posting_process = Process(target=self.post_cdn, args=(self.post_queue, self.kafka_hash_q))
 		self.my_logger.info('Initializing Streaming Process')
-		self.streaming_process = Process(target=self.stream_audio, args=(self.post_queue, self.kafka_hash_q))
+		self.streaming_process = Process(target=self.stream_audio, args=(self.post_queue, self.kafka_hash_q, self.duration_lock))
 
 		# set all process daemons
 		self.my_logger.info('Setting all processes to daemon=True')
@@ -292,6 +294,7 @@ class Microphone():
 		self.end_time = ''
 
 
+	
 	"""
 		Posting Thread Method
 	"""
@@ -324,29 +327,8 @@ class Microphone():
 				
 				try:
 					files = {'files': open(filename, 'rb')}
-					response = requests.post(f'http://{cdn_url}:{cdn_port}/upload', files=files)
-					fileid = response.text.split()[-1]
-
-					# Ensure SHA posted matches the current file's SHA
-					if fileid != sha:
-						self.my_logger.error(f'SHA mismatch error!: file:{sha}, POST:{fileid}')
-
-					confirmation = requests.get(f'http://{cdn_url}:{cdn_port}/{fileid}')
-					if str(confirmation.status_code) != '200':
-						self.my_logger.error(f'Upload error: HTTP {confirmation.status_code}')
-						'''
-						If POST failed, need to alert if the recorder starts filling up with .wavs
-						The process will exit if the device runs out of space.
-						'''
-						usage = shutil.disk_usage('/')
-						percent_used = usage[1] / usage[0] * 100
-						self.my_logger.info('Recording not deleted. System storage used: %.2f%%' % percent_used)
-						if percent_used > 95:
-							self.my_logger.critical('Microphone crash imminent: Storage used: %.2f%%' % percent_used)
-						elif percent_used > 90:
-							self.my_logger.warning('System nearly full. Storage used: %.2f%%' % percent_used)
-
-					elif fileid == sha:  # and str(confirmation.status_code) == '200' implied
+					
+					if SKIP_POST_CDN:
 						os.remove(filename)
 						self.my_logger.info("Post to CDN was successful")
 						self.my_logger.info("Deleted file: {}".format(filename))
@@ -355,7 +337,42 @@ class Microphone():
 																			 "endTime": str(end_time),
 																			 "SHA1": f'{filename}',
 																			 "fileSize": str(filesize),
-																			 "Room": self.room,
+																			 "Room": 'self.room',
+																			 "microphone": self.microphone_number,
+																			 "calibration_flag": calibration_flag}})
+					else:
+						response = requests.post(f'http://{cdn_url}:{cdn_port}/upload', files=files)
+						fileid = response.text.split()[-1]
+
+						# Ensure SHA posted matches the current file's SHA
+						if fileid != sha:
+							self.my_logger.error(f'SHA mismatch error!: file:{sha}, POST:{fileid}')
+
+						confirmation = requests.get(f'http://{cdn_url}:{cdn_port}/{fileid}')
+						if str(confirmation.status_code) != '200':
+							self.my_logger.error(f'Upload error: HTTP {confirmation.status_code}')
+							'''
+							If POST failed, need to alert if the recorder starts filling up with .wavs
+							The process will exit if the device runs out of space.
+							'''
+							usage = shutil.disk_usage('/')
+							percent_used = usage[1] / usage[0] * 100
+							self.my_logger.info('Recording not deleted. System storage used: %.2f%%' % percent_used)
+							if percent_used > 95:
+								self.my_logger.critical('Microphone crash imminent: Storage used: %.2f%%' % percent_used)
+							elif percent_used > 90:
+								self.my_logger.warning('System nearly full. Storage used: %.2f%%' % percent_used)
+
+						elif fileid == sha:  # and str(confirmation.status_code) == '200' implied
+							os.remove(filename)
+							self.my_logger.info("Post to CDN was successful")
+							self.my_logger.info("Deleted file: {}".format(filename))
+
+							kafka_hash_q.put({'text': f'{filename}', 'details': {"startTime": str(start_time),
+																			 "endTime": str(end_time),
+																			 "SHA1": f'{filename}',
+																			 "fileSize": str(filesize),
+																			 "Room": 'self.room',
 																			 "microphone": self.microphone_number,
 																			 "calibration_flag": calibration_flag}})
 
@@ -502,10 +519,18 @@ class Microphone():
 	"""
 		Streaming Thread Method
 	"""
-	def stream_audio(self, post_queue, kafka_hash_q):
+	def stream_audio(self, post_queue, kafka_hash_q, duration_lock):
 		"""  TODO  """
 		self.my_logger.info('Streaming Process Successfully Starting')
+		cmd = "cvlc -vvv alsa://hw:Microphone --sout-keep --no-sout-video --sout='#transcode{acodec=mpga,ab=128,aenc=ffmpeg,channels=2,samplerate=44100,threads=2}:rtp{mux=ts,dst=239.255.12.42,port=1234,sdp=sap,proto=udp,name=\"YetiAudioStream\"}'"
+		self.my_logger.info(cmd)
+		self.my_logger.info('stream_audio: Acquiring recording duration lock...')
+		duration_lock.acquire()  # blocking
+		self.my_logger.info('stream_audio: Recording duration lock acquired. Opening audio stream.')
+		os.system(cmd)
 		while True:
+			pass
+			"""
 			while not post_queue.empty():
 				self.my_logger.info('Streaming .wav audio to the live feed URL')
 				# get the message from the post_queue
@@ -523,7 +548,7 @@ class Microphone():
 
 				...
 
-
+			"""
 
 # -------------------------------------------------------------------------------------
 
@@ -535,14 +560,15 @@ if __name__ == "__main__":
 			mic_number = os.environ.get('MIC_NUM', '-1')
 			sensor = Microphone(int(mic_number))
 			# sensor.start()
+			sensor.my_logger.info("Starting Streaming Process")
+			sensor.streaming_process.start()
 			sensor.my_logger.info('Starting Audio Process')
 			sensor.audio_process.start()
 			sensor.my_logger.info('Starting Hash Process')
 			sensor.hash_process.start()
 			sensor.my_logger.info("Starting Posting Process")
 			sensor.posting_process.start()
-			sensor.my_logger.info("Starting Streaming Process")
-			sensor.streaming_process.start()
+			
 
 			while True:
 				if not sensor.kafka_hash_q.empty():

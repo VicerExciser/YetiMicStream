@@ -29,12 +29,22 @@ cmd_str = "cvlc {} {} {}".format(opts[0], stream_data['mrl'], ' '.join(opts[1:])
 print(cmd_str, end="\n\n")
 
 inst = vlc.Instance(opts)
+
+"""
+ret = inst.vlm_add_broadcast("YetiBroadcast", stream_data['mrl'], opts[-1].replace("--sout=",""), 3, opts[:2], 1, 0)
+if ret >= 0:
+	print("\n>>>>  vlm_add_broadcast() OKAY\n")
+else:
+	print("\n>>>>  vlm_add_broadcast() FAILED\n")
+"""
+
 p = inst.media_player_new()
 p.set_mrl(stream_data['mrl'])
 p.play()
 
 while True:
 	try:
+		# p.play()
 		pass
 	except KeyboardInterrupt:
 		break
