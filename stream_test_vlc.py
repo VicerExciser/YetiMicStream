@@ -25,7 +25,7 @@ opts = [
 		)
 ]
 
-cmd_str = "cvlc {} alsa://hw:Microphone {} {} {} {}".format(*opts)
+cmd_str = "cvlc {} {} {}".format(opts[0], stream_data['mrl'], ' '.join(opts[1:]))
 print(cmd_str, end="\n\n")
 
 inst = vlc.Instance(opts)
