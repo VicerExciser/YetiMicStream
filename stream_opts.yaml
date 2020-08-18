@@ -4,6 +4,7 @@ port: 1234
 name: YetiMicStream
 acodec: mpga
 bitrate: 256
+aencoder: ffmpeg
 channels: 2
 samplerate: 48000
 threads: 2

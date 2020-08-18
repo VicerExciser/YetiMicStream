@@ -11,10 +11,10 @@ opts = [
 	# stream_data['mrl'],
 	"--sout-keep",
 	"--no-sout-video",
-	"--sout",
-	"#transcode{acodec=%s,ab=%d,channels=%d,samplerate=%d,threads=%d}:rtp{mux=ts,dst=%s,port=%d,sdp=%s,name=\"%s\"}" % (
+	"--sout=#transcode{acodec=%s,ab=%d,aenc=%s,channels=%d,samplerate=%d,threads=%d}:rtp{mux=ts,dst=%s,port=%d,sdp=%s,name=\"%s\"}" % (
 		stream_data['acodec'],
 		stream_data['bitrate'],
+		stream_data['aencoder'],
 		stream_data['channels'],
 		stream_data['samplerate'],
 		stream_data['threads'],
