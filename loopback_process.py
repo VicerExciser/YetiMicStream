@@ -4,24 +4,25 @@ import time
 import signal
 import psutil
 import datetime as dt
+import statistics as stat 
 
 """
 To receive the audio stream from another machine, simply run the command:
 	
 			$  vlc rtp://@<stream IP address>:<stream port>
 	e.g.,
-			$  vlc -vvv rtp://@239.255.12.42:1234
+			$  vlc -vv rtp://@239.255.12.42:1234
 """
 
 def _get_timestamp():
 	return '{}Z'.format(dt.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S')) #.%f')[:-3])
 
-print(_get_timestamp())
+# print(_get_timestamp())
 
 def get_pids_for(p_name="VLC"):
 	procs = [p.info for p in psutil.process_iter(attrs=['pid', 'name']) if p_name.lower() in p.info['name'].lower()]  # or p_name in p.info['name']]
 	# return procs
-	print(procs)
+	# print("\n{}".format(procs))
 	return [p['pid'] for p in procs]
 
 def kill_pid(pid, p_name=None):
@@ -41,7 +42,7 @@ def display_proc_cpu_usage(proc_dict):
 
 
 input_mrl = "alsa://hw:Microphone" if sys.platform != "darwin" else "qtsound://"
-vlc_exec = "vlc" if sys.platform != "darwin" else "/Applications/VLC.app/Contents/MacOS/VLC"
+vlc_exec = "cvlc" if sys.platform != "darwin" else "/Applications/VLC.app/Contents/MacOS/VLC"
 loopback = "127.0.0.1"
 rtp_addr = "239.255.12.42"
 rtp_port = str(1234)
@@ -75,7 +76,7 @@ stream_opts = [
 	'&'
 ]
 stream_cmd = "{} {}".format(vlc_exec, ' '.join(stream_opts))
-print("\n>>>  stream_cmd:  `{}`\n".format(stream_cmd))
+print("\n>>>  Now launching background Streaming Process\n>>>  stream_cmd:  `{}`\n".format(stream_cmd))
 kill_all_vlc()
 os.system(stream_cmd)
 # stream_proc_pid = int(os.popen("echo $!").read()) #[:-1])
@@ -84,7 +85,7 @@ if len(vlc_pids) == 1:
 	stream_proc_pid = int(vlc_pids[0])
 else:
 	stream_proc_pid = None
-print("\n>>>  Background stream task PID:  {}\n".format(stream_proc_pid))
+print("\n>>>  Background stream task PID:  {}\n\n".format(stream_proc_pid))
 stream_proc = psutil.Process(stream_proc_pid)
 stream_proc.cpu_percent(interval=1)
 
@@ -93,11 +94,12 @@ n = 0
 recv_proc_pid = None
 while True:
 	try:
+		print("\n{}".format("="*20))
 		outfilename = os.path.join(os.getcwd(), "stream_capture{}.wav".format(n))
-		print("\n>>>  Now capturing audio clip:  '{}'\n".format(outfilename))
+		print(">>>  Now capturing audio clip:  '{}'".format(outfilename))
 		recv_str = "#"+transcode_str+":std{access=file,mux=wav,dst="+outfilename+"}"  #.format(transcode_str, outfilename)
 		recv_cmd = '{} -v --no-sout-video --sout-audio --ttl=1 --sout-keep --sout "{}" {} vlc://quit &'.format(vlc_exec, recv_str, recv_url)
-		print("\n>>>  recv_cmd:  `{}`\n".format(recv_cmd))
+		print(">>>  recv_cmd:  `{}`\n".format(recv_cmd))
 		start_time = time.time()
 		os.system(recv_cmd)
 		recv_proc_pid = None  #int(os.popen("echo $!").read()) #[:-1])
@@ -108,13 +110,20 @@ while True:
 		print("\n>>>  Background receiver task PID:  {}\n".format(recv_proc_pid))
 		recv_proc = psutil.Process(recv_proc_pid)
 		recv_proc.cpu_percent(interval=1)
+		tx_cpu_record = []
+		rx_cpu_record = []
 		while (time.time() - start_time) <= (clip_duration + 1):
 			time.sleep(0.1)
-			display_proc_cpu_usage({"Streaming Process" : stream_proc, "Receiving Process" : recv_proc})
-		print("\n>>>  Clip captured:  '{}'\n>>>  Killing recv. process with PID:  {}\n".format(outfilename, recv_proc_pid))
+			# display_proc_cpu_usage({"Streaming Process" : stream_proc, "Receiving Process" : recv_proc})
+			tx_cpu_record.append(stream_proc.cpu_percent())
+			rx_cpu_record.append(recv_proc.cpu_percent())
+		print("\n>>>  Clip captured:  '{}'\n>>>  Killing recv. process with PID:  {}".format(outfilename, recv_proc_pid))
 		kill_pid(recv_proc_pid, p_name="VLC")
+		print("\n[ CPU ]  Average CPU Utilization for Streaming Process:\t{:.1f}%  (Max = {}%, Min = {}%)".format(stat.mean(tx_cpu_record), max(tx_cpu_record), min(tx_cpu_record)))
+		print("[ CPU ]  Average CPU Utilization for Receiving Process:\t{:.1f}%  (Max = {}%, Min = {}%)\n".format(stat.mean(rx_cpu_record), max(rx_cpu_record), min(rx_cpu_record)))
+		print("="*20)
 		n += 1
-	except KeyboardInterrupt:
+	except (KeyboardInterrupt, psutil.NoSuchProcess):
 		break
 
 kill_all_vlc()
