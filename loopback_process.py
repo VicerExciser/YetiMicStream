@@ -10,7 +10,7 @@ To receive the audio stream from another machine, simply run the command:
 	
 			$  vlc rtp://@<stream IP address>:<stream port>
 	e.g.,
-			$  vlc rtp://@239.255.12.42:1234
+			$  vlc -vvv rtp://@239.255.12.42:1234
 """
 
 def _get_timestamp():
@@ -19,7 +19,7 @@ def _get_timestamp():
 print(_get_timestamp())
 
 def get_pids_for(p_name="VLC"):
-	procs = [p.info for p in psutil.process_iter(attrs=['pid', 'name']) if p_name in p.info['name']]
+	procs = [p.info for p in psutil.process_iter(attrs=['pid', 'name']) if p_name.lower() in p.info['name'].lower()]  # or p_name in p.info['name']]
 	# return procs
 	print(procs)
 	return [p['pid'] for p in procs]
@@ -33,6 +33,11 @@ def kill_pid(pid, p_name=None):
 def kill_all_vlc():
 	for pid in get_pids_for(p_name="VLC"):
 		kill_pid(pid, p_name="VLC")
+
+def display_proc_cpu_usage(proc_dict):
+	disp_format = "\n[ CPU ]\t'{}' CPU Utilization:\t{}%"
+	disp_str = "".join([disp_format.format(k, v.cpu_percent()) for k,v in proc_dict.items()])
+	print(disp_str, end="\n\n")
 
 
 input_mrl = "alsa://hw:Microphone" if sys.platform != "darwin" else "qtsound://"
@@ -80,7 +85,8 @@ if len(vlc_pids) == 1:
 else:
 	stream_proc_pid = None
 print("\n>>>  Background stream task PID:  {}\n".format(stream_proc_pid))
-
+stream_proc = psutil.Process(stream_proc_pid)
+stream_proc.cpu_percent(interval=1)
 
 recv_url = "rtp://@{}:{}".format(loopback, rtp_port)
 n = 0
@@ -88,6 +94,7 @@ recv_proc_pid = None
 while True:
 	try:
 		outfilename = os.path.join(os.getcwd(), "stream_capture{}.wav".format(n))
+		print("\n>>>  Now capturing audio clip:  '{}'\n".format(outfilename))
 		recv_str = "#"+transcode_str+":std{access=file,mux=wav,dst="+outfilename+"}"  #.format(transcode_str, outfilename)
 		recv_cmd = '{} -v --no-sout-video --sout-audio --ttl=1 --sout-keep --sout "{}" {} vlc://quit &'.format(vlc_exec, recv_str, recv_url)
 		print("\n>>>  recv_cmd:  `{}`\n".format(recv_cmd))
@@ -99,8 +106,11 @@ while True:
 				recv_proc_pid = int(pid)
 				break
 		print("\n>>>  Background receiver task PID:  {}\n".format(recv_proc_pid))
+		recv_proc = psutil.Process(recv_proc_pid)
+		recv_proc.cpu_percent(interval=1)
 		while (time.time() - start_time) <= (clip_duration + 1):
 			time.sleep(0.1)
+			display_proc_cpu_usage({"Streaming Process" : stream_proc, "Receiving Process" : recv_proc})
 		print("\n>>>  Clip captured:  '{}'\n>>>  Killing recv. process with PID:  {}\n".format(outfilename, recv_proc_pid))
 		kill_pid(recv_proc_pid, p_name="VLC")
 		n += 1

@@ -53,4 +53,4 @@ AR=48000
 
 #cvlc -vvv alsa://hw:Microphone --sout-keep --no-sout-video --sout='#transcode{acodec=mp3,ab=128,aenc=ffmpeg,channels=2,samplerate=48000,threads=2}:rtp{mux=ts,dst=239.255.12.42,port=1234,sdp=sap,proto=udp,name="YetiAudioStream"}'
 #cvlc -vvv alsa://hw:Microphone --sout-keep --no-sout-video --sout='#transcode{acodec=mpga,ab=128,aenc=ffmpeg,channels=2,samplerate=48000,threads=2}:rtp{mux=ts,dst=239.255.12.42,port=1234,sdp=sap,proto=udp,name="YetiAudioStream"}'
-cvlc -vvv alsa://hw:Microphone --sout-keep --no-sout-video --sout='#transcode{acodec=mpga,ab=128,channels=2,samplerate=48000,threads=2}:rtp{mux=ts,dst=239.255.12.42,port=1234,sdp=sap,proto=udp,name="YetiAudioStream"}'
+cvlc -vvv alsa://hw:Microphone --sout-keep --no-sout-video --sout='#transcode{acodec=mpga,ab=128,channels=2,samplerate=44100,threads=2}:rtp{mux=ts,dst=239.255.12.42,port=1234,sdp=sap,proto=udp,name="YetiAudioStream"}'

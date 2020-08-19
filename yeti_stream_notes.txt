@@ -145,6 +145,18 @@ To get the name of the device programmatically:
 	device_name = [l[l.index('[')+1:l.index(']')].strip() for l in os.popen('cat /proc/asound/cards').read().split('\n') if 'Yeti' in l and '[' in l][0]
 	(end_python)
 
+  __OR__ (using PyAudio):
+  (python)
+  import pyaudio
+  p = pyaudio.PyAudio()
+  mrl = None
+  for ii in range(p.get_device_count()):
+    dev_name = p.get_device_info_by_index(ii).get('name')
+    if "Yeti" in dev_name:
+      mrl = dev_name[dev_name.index('(')+1:dev_name.index(')')]
+  print(mrl)
+  (end_python)
+
 	(bash)
 	DEVNAME=$(aplay -l | grep Yeti | cut -d':' -f2 | cut -d'[' -f1 | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
 	(end_bash)
@@ -181,9 +193,9 @@ Options:
 - gstreamer
 - ffmpeg
 - omxplayer
--->  To play an audio file w/ omxplayer (thru headphone jack):  $  omxplayer -o local example.py
--->  To play an audio file w/ omxplayer (thru HDMI):  $  omxplayer -o hdmi example.py
--->  To play an audio file w/ omxplayer (thru both outputs):  $  omxplayer -o both example.py
+-->  To play an audio file w/ omxplayer (thru headphone jack):  $  omxplayer -o local example.wav
+-->  To play an audio file w/ omxplayer (thru HDMI):            $  omxplayer -o hdmi example.mp3
+-->  To play an audio file w/ omxplayer (thru both outputs):    $  omxplayer -o both example.flac
 
 
 
@@ -210,7 +222,7 @@ cvlc -vvv alsa://hw:2,0 \
 
 ^^ Note that 239.255.12.42 is a multicast IP address
 ^^ Ensure the port number is an even number (1234 is default for RTP)
-
+^^ Default sample rate for the Yeti mic is 44.1kHz
 
 ^^ Note that this command specifies the use of SAP (Session Announcement Protocol), info below taken from https://wiki.videolan.org/SAP/:
 """
@@ -302,3 +314,28 @@ https://wiki.videolan.org/Documentation:Streaming_HowTo/Receive_and_Save_a_Strea
 ======================
 Configurations & Effects:
 - Lower bitrate (`ab`) results in poorer quality with little-to-no improvement in latency
+
+
+======================
+VLC: Streaming && Saving Audio Captures all-in-one....      TODO
+
+--> perhaps "duplicate" stream: 1 dst is the RTP address, the other is a loopback
+----> add a listener on the loopback address & capture audio from there!
+
+vlc -vvv input_stream --sout
+'#transcode{vcodec=mp4v,acodec=mpga,vb=800,ab=128,deinterlace}:
+duplicate{dst=display,dst=rtp{mux=ts,dst=239.255.12.42,sdp=sap,name="TestStream"},
+dst=rtp{mux=ts,dst=192.168.1.2}}'
+
+
+
+
+
+
+
+
+
+
+
+
+
