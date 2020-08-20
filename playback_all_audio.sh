@@ -7,7 +7,6 @@ do
 	# echo "(filename = '${filename}', extension = '${ext}'"
 	case "$ext" in
 		wav | mp3) echo -e "\nPlaying audio file:  '${filename}'" && omxplayer -o both $filename ;;
-		#mp3) echo "Playing audio file:  '${filename}'" && omxplayer -o both $filename ;;
 		*) ;;
 	esac
 done
