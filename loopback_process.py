@@ -47,11 +47,14 @@ loopback = "127.0.0.1"
 rtp_addr = "239.255.12.42"
 rtp_port = str(1234)
 stream_name = "YetiAudioStream"
-acodec = "mpga"  #"s16l"
 clip_duration = 30  ## Seconds
+acodec = "mpga"  #"s16l"
+bitrate = str(256)  #str(128)  ## In kBit/s
 
 
-transcode_str = "transcode{acodec="+acodec+",channels=2}" #.format(acodec)
+## Using `ffmpeg` as the audio encoder and setting the `threads` parameter to 2 reduces CPU costs by ~30% (a nearly two-fold reduction)
+transcode_str = "transcode{acodec="+acodec+",ab="+bitrate+",aenc=ffmpeg,channels=2,samplerate=44100,threads=2}"
+
 rtp_strf = "rtp{mux=ts,dst={},port={},sdp=sap,name='{}'}"
 dup_dsts = [
 	# rtp_strf.format(rtp_addr, rtp_port, stream_name),
@@ -63,7 +66,8 @@ dup_dsts = [
 duplicate_str = "duplicate{dst="+dup_dsts[0]+",dst="+dup_dsts[1]+"}"  #.format(*dup_dsts)
 sout_str = "#{}:{}".format(transcode_str, duplicate_str)
 stream_opts = [
-	'-v', 
+	#'-v', 
+	'-q',
 	'-I', 'dummy',
 	'--no-sout-video', 
 	'--sout-audio', 
@@ -98,7 +102,8 @@ while True:
 		outfilename = os.path.join(os.getcwd(), "stream_capture{}.wav".format(n))
 		print(">>>  Now capturing audio clip:  '{}'".format(outfilename))
 		recv_str = "#"+transcode_str+":std{access=file,mux=wav,dst="+outfilename+"}"  #.format(transcode_str, outfilename)
-		recv_cmd = '{} -v --no-sout-video --sout-audio --ttl=1 --sout-keep --sout "{}" {} vlc://quit &'.format(vlc_exec, recv_str, recv_url)
+		#recv_cmd = '{} -v --no-sout-video --sout-audio --ttl=1 --sout-keep --sout "{}" {} vlc://quit &'.format(vlc_exec, recv_str, recv_url)
+		recv_cmd = '{} -q --no-sout-video --sout-audio --ttl=1 --sout-keep --sout "{}" {} vlc://quit &'.format(vlc_exec, recv_str, recv_url)
 		print(">>>  recv_cmd:  `{}`\n".format(recv_cmd))
 		start_time = time.time()
 		os.system(recv_cmd)
