@@ -84,17 +84,17 @@ class VLCAudioSettings:
 class VLCAudioBase():
 	def __init__(self, name, audio_settings, verbose_level, executable, protocol):
 		assert isinstance(audio_settings, VLCAudioSettings)
-		self.name = name
+		# self.name = name
 		self.cfg = audio_settings 	 ## Must be an `AudioSettings` dataclass instance
 		self.v_opt = '-{}'.format('v'*verbose_level) if verbose_level in range(1,4) else '-q'
 		self.vlc = executable
 		self.proto = protocol
-		self.process = None
-		self.__state = "STOPPED"
+		# self.process = None
+		# self.__state = "STOPPED"
 
-	@property
-	def state(self):
-		return self.__state
+	# @property
+	# def state(self):
+	# 	return self.__state
 
 	@property
 	def opt_str(self):
@@ -119,29 +119,26 @@ class VLCAudioBase():
 				",threads=2}"
 				])
 	
-	@property
-	def pid(self):
-		return self.process.pid if self.process else None
+	# @property
+	# def pid(self):
+	# 	return self.process.pid if self.process else None
 
-	@property
-	def is_running(self):
-		if self.process is None:
-			if self.__state != "STOPPED":
-				self.update_state("STOPPED")
-			return False
-		running = self.process.poll() is None 	## Popen.poll() returns the exit code of child process if it has terminated, else None
-		if running and self.__state != "STREAMING":
-			self.update_state("STREAMING")
-		elif not running and self.__state != "STOPPED":
-			self.update_state("STOPPED")
-			## TODO: Should `self.process` be set to None here??
-			# self.process = None
-		return running 
+	# @property
+	# def is_running(self):
+	# 	if self.process is None:
+	# 		if self.__state != "STOPPED":
+	# 			self.update_state("STOPPED")
+	# 		return False
+	# 	running = self.process.poll() is None 	## Popen.poll() returns the exit code of child process if it has terminated, else None
+	# 	if running and self.__state != "STREAMING":
+	# 		self.update_state("STREAMING")
+	# 	elif not running and self.__state != "STOPPED":
+	# 		self.update_state("STOPPED")
+	# 		## TODO: Should `self.process` be set to None here??
+	# 		# self.process = None
+	# 	return running 
 
-	def update_state(self, new_state):
-		if new_state != self.__state:
-			self.__state = new_state
-			print(f"\n[update_state::{self.name}]  NEW STATE: {new_state}")
+	
 
 	def update_audio_settings(self, new_settings):
 		self.cfg = new_settings 	 ## Must be an `AudioSettings` dataclass instance
@@ -156,8 +153,9 @@ class VLCAudioStreamer(VLCAudioBase):
 				loopback_addr='127.0.0.1', loopback_port=1234, loopback_name='loopback', 
 				verbose_level=0, executable='cvlc', protocol='rtp'):
 		## NOTE: Currently no support for any protocol other than RTP; in future, can add support for HTTP streams
-		# self.name = name 
-		super().__init__(name, audio_settings, verbose_level, executable, protocol)
+		self.name = name 
+		# super().__init__(name, audio_settings, verbose_level, executable, protocol)
+		super().__init__(audio_settings, verbose_level, executable, protocol)
 		# self.cfg = audio_settings 	 ## Must be an `AudioSettings` dataclass instance
 		self.out_addr = dest_ip_address
 		self.out_port = dest_port
@@ -169,13 +167,13 @@ class VLCAudioStreamer(VLCAudioBase):
 		# self.v_opt = '-{}'.format('v'*verbose_level) if verbose_level in range(1,4) else '-q'
 		# self.opt_str = f'{self.v_opt} --no-sout-video --sout-audio --ttl=1 --sout-keep'
 
-		# self.__state = "STOPPED"
-		# self.process = None
-	"""
+		self.__state = "STOPPED"
+		self.process = None
+	
 	@property
 	def state(self):
 		return self.__state
-	"""
+	
 	@property
 	def duplicate_str(self):
 		destination1 = ''.join(["rtp{mux=ts,dst=", self.out_addr, ",port=", str(self.out_port), ",sdp=sap,name='", self.name, "'}"])
@@ -190,12 +188,12 @@ class VLCAudioStreamer(VLCAudioBase):
 	def stream_cmd(self):
 		self.__stream_cmd = f'{self.vlc} {self.opt_str} --sout "{self.sout}" {self.input_stream} &'
 		return self.__stream_cmd
-	"""
+	
 	@property
 	def pid(self):
 		return self.process.pid if self.process else None
-	"""
-	"""
+	
+	
 	@property
 	def is_running(self):
 		if self.process is None:
@@ -210,15 +208,15 @@ class VLCAudioStreamer(VLCAudioBase):
 			## TODO: Should `self.process` be set to None here??
 			# self.process = None
 		return running 
-	"""
+	
 	def display_stream_command(self):
 		print(f"\n[{self.name}]  Stream Command: {self.stream_cmd}")
 		print(f"\n[{self.name}]  Stream Command (split): {shlex.split(self.stream_cmd)}\n")
 
-	# def update_state(self, new_state):
-	# 	if new_state != self.__state:
-	# 		self.__state = new_state
-	# 		print(f"\n[update_state]  NEW STATE: {new_state}")
+	def update_state(self, new_state):
+		if new_state != self.__state:
+			self.__state = new_state
+			print(f"\n[update_state]  NEW STATE: {new_state}")
 
 	def stream_start(self, use_shlex=True, use_shell=True): 	## Working arg combos: (use_shlex=False, use_shell=True), (use_shlex=True, use_shell=True)
 		if not self.is_running:
@@ -253,11 +251,14 @@ class VLCAudioStreamer(VLCAudioBase):
 class VLCAudioListener(VLCAudioBase):
 	def __init__(self, name, audio_settings, capture_format='wav', capture_duration=30, 
 									verbose_level=0, executable='cvlc', protocol='rtp'):
-		super().__init__(name, audio_settings, verbose_level, executable, protocol)
+		# super().__init__(name, audio_settings, verbose_level, executable, protocol)
+		super().__init__(audio_settings, verbose_level, executable, protocol)
+		self.name = name 
 		self.clip_format = capture_format.lower()
 		# self.clip_ext = f".{self.clip_format}"
 		self.clip_len = capture_duration
 		self.unprocessed_clips = Queue()  # list()
+		self.__state = "STOPPED"
 
 	@property
 	def clip_filename(self):
@@ -285,6 +286,30 @@ class VLCAudioListener(VLCAudioBase):
 	def display_listen_command(self):
 		print(f"\n[{self.name}]  Listen Command: {self.listen_cmd}")
 		print(f"\n[{self.name}]  Listen Command (split): {shlex.split(self.listen_cmd)}\n")
+
+	@property
+	def pid(self):
+		return self.process.pid if self.process else None
+
+	@property
+	def is_running(self):
+		if self.process is None:
+			if self.__state != "STOPPED":
+				self.update_state("STOPPED")
+			return False
+		running = self.process.poll() is None 	## Popen.poll() returns the exit code of child process if it has terminated, else None
+		if running and self.__state != "STREAMING":
+			self.update_state("STREAMING")
+		elif not running and self.__state != "STOPPED":
+			self.update_state("STOPPED")
+			## TODO: Should `self.process` be set to None here??
+			# self.process = None
+		return running 
+
+	def update_state(self, new_state):
+		if new_state != self.__state:
+			self.__state = new_state
+			print(f"\n[update_state::{self.name}]  NEW STATE: {new_state}")
 
 	def listen_start(self, use_shlex=True, use_shell=True):
 		if not self.is_running:
