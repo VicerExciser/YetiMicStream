@@ -82,7 +82,8 @@ class VLCAudioSettings:
 ##=============================================================================
 
 class VLCAudioBase():
-	def __init__(self, name, audio_settings, verbose_level, executable, protocol):
+	# def __init__(self, name, audio_settings, verbose_level, executable, protocol):
+	def __init__(self, audio_settings, verbose_level, executable, protocol):
 		assert isinstance(audio_settings, VLCAudioSettings)
 		# self.name = name
 		self.cfg = audio_settings 	 ## Must be an `AudioSettings` dataclass instance
@@ -259,6 +260,7 @@ class VLCAudioListener(VLCAudioBase):
 		self.clip_len = capture_duration
 		self.unprocessed_clips = Queue()  # list()
 		self.__state = "STOPPED"
+		self.process = None
 
 	@property
 	def clip_filename(self):
@@ -298,8 +300,8 @@ class VLCAudioListener(VLCAudioBase):
 				self.update_state("STOPPED")
 			return False
 		running = self.process.poll() is None 	## Popen.poll() returns the exit code of child process if it has terminated, else None
-		if running and self.__state != "STREAMING":
-			self.update_state("STREAMING")
+		if running and self.__state != "RECORDING":
+			self.update_state("RECORDING")
 		elif not running and self.__state != "STOPPED":
 			self.update_state("STOPPED")
 			## TODO: Should `self.process` be set to None here??
@@ -316,7 +318,7 @@ class VLCAudioListener(VLCAudioBase):
 			cmd = self.listen_cmd if not use_shlex else shlex.split(self.listen_cmd)
 			print(f"[listen_start]  Listener '{self.name}' recording new clip:  '{self.__current_clip_name}'")
 			# self.unprocessed_clips.append(self.__current_clip_name)
-			self.unprocessed_clips.put(self.__current_clip_name)
+			# self.unprocessed_clips.put(self.__current_clip_name)
 			self.process = subprocess.Popen(cmd, shell=use_shell)
 			self.update_state("RECORDING")
 		else:
@@ -335,6 +337,7 @@ class VLCAudioListener(VLCAudioBase):
 				time.sleep(0.2)
 				continue
 			print(f"[listen_stop]  Listener '{self.name}' successfully captured audio clip:  '{self.__current_clip_name}'")
+			self.unprocessed_clips.put(self.__current_clip_name)
 			self.__current_clip_name = None
 			self.process = None
 		else:
@@ -454,8 +457,11 @@ class YetiManager():
 			end_time = _get_timestamp()
 			## TODO: Use queue instead & ensure that all unprocessed_clips are processed & removed
 			# audio_clip = self.hash_rename(self.listener.unprocessed_clips[0])
-			audio_clip_name = self.listener.unprocessed_clips.get()  #[0]
-			hash_q.put((audio_clip_name, start_time, end_time))
+			if not self.listener.unprocessed_clips.empty():
+				audio_clip_name = self.listener.unprocessed_clips.get()  #[0]
+				hash_q.put((audio_clip_name, start_time, end_time))
+			else:
+				print("[audio_processing_loop]  ERROR: VLCAudioListener's unprocessed_clips Queue is empty after stopping recording!")
 			# self.add_to_post_q(audio_clip)
 			## Clear the start and end timestamps
 			# self.start_time = ''
