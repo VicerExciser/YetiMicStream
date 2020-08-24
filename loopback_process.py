@@ -3,6 +3,7 @@ import sys
 import time
 import signal
 # import psutil
+import hashlib
 import datetime as dt
 import statistics as stat 
 from dataclasses import dataclass
@@ -219,7 +220,7 @@ class VLCAudioStreamer(VLCAudioBase):
 			self.__state = new_state
 			print(f"\n[update_state]  NEW STATE: {new_state}")
 
-	def stream_start(self, use_shlex=True, use_shell=True): 	## Working arg combos: (use_shlex=False, use_shell=True), (use_shlex=True, use_shell=True)
+	def stream_start(self, use_shlex=False, use_shell=True): 	## Working arg combos: (use_shlex=False, use_shell=True), (use_shlex=True, use_shell=True)
 		if not self.is_running:
 			cmd = self.stream_cmd if not use_shlex else shlex.split(self.stream_cmd)
 			self.process = subprocess.Popen(cmd, shell=use_shell)
@@ -313,7 +314,7 @@ class VLCAudioListener(VLCAudioBase):
 			self.__state = new_state
 			print(f"\n[update_state::{self.name}]  NEW STATE: {new_state}")
 
-	def listen_start(self, use_shlex=True, use_shell=True):
+	def listen_start(self, use_shlex=False, use_shell=True):
 		if not self.is_running:
 			cmd = self.listen_cmd if not use_shlex else shlex.split(self.listen_cmd)
 			print(f"[listen_start]  Listener '{self.name}' recording new clip:  '{self.__current_clip_name}'")
@@ -414,17 +415,17 @@ class YetiManager():
 		# self.kafka_hash_q = Queue()  # Needed since producers cannot be shared across processes
 
 		## Processes
-		print(f'[{self.__class__}]  Initializing Audio Process')
+		print(f'[{self.__class__.__name__}]  Initializing Audio Process')
 		self.audio_process = Process(target=self.audio_processing_loop, args=(self.post_queue,))  #(self.hash_queue,))   # args=(self.frame_q, self.p, self.duration_lock, self.do_calibration_flag, self.calibration_lock))
 	   
 		# print(f'[{self.__class__}]  Initializing Hash Process')
 		# self.hash_process = Process(target=self.hash_rename, args=(self.hash_queue, self.post_queue))
 
-		print(f'[{self.__class__}]  Initializing Posting Process')
+		print(f'[{self.__class__.__name__}]  Initializing Posting Process')
 		self.posting_process = Process(target=self.post_cdn, args=(self.post_queue,))  # , self.kafka_hash_q))
 
 		## Set all process daemons
-		print(f'[{self.__class__}]  Setting all processes to daemon=True')
+		print(f'[{self.__class__.__name__}]  Setting all processes to daemon=True')
 		self.audio_process.daemon = True
 		# self.hash_process.daemon = True
 		self.posting_process.daemon = True
@@ -454,12 +455,13 @@ class YetiManager():
 	def audio_processing_loop(self, post_q):  #hash_q):
 		print('Audio Process Successfully Started')
 		self.streamer.stream_start()
+		time.sleep(3)
 		while True:
 		# try:
 			self.start_time = _get_timestamp()
 			ts = time.time()
 			self.listener.listen_start()
-			while (time.time() - ts) <= int(self.listener.clip_len + 1):
+			while (time.time() - ts) <= int(self.listener.clip_len):
 				time.sleep(0.1)
 			self.listener.listen_stop()
 			self.end_time = _get_timestamp()
@@ -474,6 +476,13 @@ class YetiManager():
 			"""
 
 			old_audio_clip_name = self.listener.get_recent_clip()
+			if not os.path.isfile(old_audio_clip_name):
+				print(f"[audio_processing_loop] ERROR:  No saved audio file named '{old_audio_clip_name}' was found!")
+				time.sleep(1)
+				self.start_time = ''
+				self.end_time = ''
+				continue
+				
 			with open(old_audio_clip_name, 'rb') as f:
 				audio_data = f.read()
 				h = hashlib.new('sha1', audio_data)
