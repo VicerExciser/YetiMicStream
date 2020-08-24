@@ -371,7 +371,7 @@ class YetiManager():
 		self.end_time = ''
 		self.filename = None
 
-		## TODO: Read these configuration values in from a file
+		## TODO: Read these configuration values in from a file ( or will they get set as environment variables?? )
 		self.stream_rtp_addr = "239.255.12.42"
 		self.stream_rtp_port = 1234
 		self.loopback_addr = "127.0.0.1" 	## <-- Address to listen on for stream audio processing/saving
@@ -429,7 +429,10 @@ class YetiManager():
 	def device_name(self):
 		if self.__device_name is None:
 			try:
-				self.__device_name = [l[l.index('[')+1:l.index(']')].strip() for l in os.popen('cat /proc/asound/cards').read().split('\n') if 'Yeti' in l and '[' in l][0]
+				# self.__device_name = [card[card.index('[')+1:card.index(']')].strip() for card in os.popen('cat /proc/asound/cards').read().split('\n') if 'Yeti' in card and '[' in card][0]
+				# self.__device_name = [card[card.index('[')+1:card.index(']')].strip() for card in os.popen('cat /proc/asound/cards').read().split('\n') if all(x in card for x in ['Yeti', '['])][0]
+				self.__device_name = [card[card.find('[')+1:card.find(']')].strip() for card in os.popen('cat /proc/asound/cards').read().split('\n') if all(x in card for x in ['Yeti', '['])][0]
+
 			except:
 				self.__device_name = 'Microphone'
 		return self.__device_name
