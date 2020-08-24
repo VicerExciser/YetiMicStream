@@ -258,7 +258,7 @@ class VLCAudioListener(VLCAudioBase):
 		self.clip_format = capture_format.lower()
 		# self.clip_ext = f".{self.clip_format}"
 		self.clip_len = capture_duration
-		self.unprocessed_clips = Queue()  # list()
+		# self.unprocessed_clips = Queue()  # list()
 		self.__state = "STOPPED"
 		self.process = None
 
@@ -337,14 +337,19 @@ class VLCAudioListener(VLCAudioBase):
 				time.sleep(0.2)
 				continue
 			print(f"[listen_stop]  Listener '{self.name}' successfully captured audio clip:  '{self.__current_clip_name}'")
-			self.unprocessed_clips.put(self.__current_clip_name)
-			self.__current_clip_name = None
+			# self.unprocessed_clips.put(self.__current_clip_name)
+			# self.__current_clip_name = None
 			self.process = None
 		else:
 			print(f"[listen_stop]  Popen process for Listener '{self.name}' is None!")
 		self.update_state("STOPPED")
 
 	### TODO: ^ Abstract the process stop/kill method out into the VLCAudioBase class, as it's really the same for both the Streamer & Listener objects
+
+	def get_recent_clip(self):
+		current_clip_name = self.__current_clip_name
+		self.__current_clip_name = None
+		return current_clip_name
 
 	"""
 	def register_file_as_processed(self, filename):
@@ -404,16 +409,16 @@ class YetiManager():
 
 		## Multiprocessing queues
 		self.post_queue = Queue()
-		self.hash_queue = Queue()
+		# self.hash_queue = Queue()
 		# self.frame_q = Queue()
 		# self.kafka_hash_q = Queue()  # Needed since producers cannot be shared across processes
 
 		## Processes
 		print(f'[{self.__class__}]  Initializing Audio Process')
-		self.audio_process = Process(target=self.audio_processing_loop, args=(self.hash_queue,))   # args=(self.frame_q, self.p, self.duration_lock, self.do_calibration_flag, self.calibration_lock))
+		self.audio_process = Process(target=self.audio_processing_loop, args=(self.post_queue,))  #(self.hash_queue,))   # args=(self.frame_q, self.p, self.duration_lock, self.do_calibration_flag, self.calibration_lock))
 	   
-		print(f'[{self.__class__}]  Initializing Hash Process')
-		self.hash_process = Process(target=self.hash_rename, args=(self.hash_queue, self.post_queue))
+		# print(f'[{self.__class__}]  Initializing Hash Process')
+		# self.hash_process = Process(target=self.hash_rename, args=(self.hash_queue, self.post_queue))
 
 		print(f'[{self.__class__}]  Initializing Posting Process')
 		self.posting_process = Process(target=self.post_cdn, args=(self.post_queue,))  # , self.kafka_hash_q))
@@ -421,7 +426,7 @@ class YetiManager():
 		## Set all process daemons
 		print(f'[{self.__class__}]  Setting all processes to daemon=True')
 		self.audio_process.daemon = True
-		self.hash_process.daemon = True
+		# self.hash_process.daemon = True
 		self.posting_process.daemon = True
 
 
@@ -446,25 +451,50 @@ class YetiManager():
 	def loop_mrl(self):
 		return f"rtp://@{self.loopback_addr}:{self.loopback_port}"
 	
-	def audio_processing_loop(self, hash_q):
+	def audio_processing_loop(self, post_q):  #hash_q):
 		print('Audio Process Successfully Started')
 		self.streamer.stream_start()
 		while True:
 		# try:
-			start_time = _get_timestamp()
+			self.start_time = _get_timestamp()
 			ts = time.time()
 			self.listener.listen_start()
 			while (time.time() - ts) <= int(self.listener.clip_len + 1):
 				time.sleep(0.1)
 			self.listener.listen_stop()
-			end_time = _get_timestamp()
+			self.end_time = _get_timestamp()
 			## TODO: Use queue instead & ensure that all unprocessed_clips are processed & removed
 			# audio_clip = self.hash_rename(self.listener.unprocessed_clips[0])
+			"""
 			if not self.listener.unprocessed_clips.empty():
 				audio_clip_name = self.listener.unprocessed_clips.get()  #[0]
 				hash_q.put((audio_clip_name, start_time, end_time))
 			else:
 				print("[audio_processing_loop]  ERROR: VLCAudioListener's unprocessed_clips Queue is empty after stopping recording!")
+			"""
+
+			old_audio_clip_name = self.listener.get_recent_clip()
+			with open(old_audio_clip_name, 'rb') as f:
+				audio_data = f.read()
+				h = hashlib.new('sha1', audio_data)
+				new_filename = h.hexdigest() + f".{self.recording_format}"  # self.listener.clip_format}"
+			os.rename(old_audio_clip_name, new_filename)
+			print(f"[audio_processing_loop]  Audio file '{old_audio_clip_name}' has been renamed to '{new_filename}'")
+			filesize = os.path.getsize(new_filename)
+			## Put all the data into the posting queue as a dictionary for easy unpacking
+			post_q.put({
+				"filename": new_filename,
+				"file_size": filesize,
+				"sha": new_filename.split('.')[0],
+				"start_t": self.start_time,
+				"end_t": self.end_time,
+				# "calibration": calibration_flag
+				})
+
+			## Clear the start and end timestamps
+			self.start_time = ''
+			self.end_time = ''
+
 			# self.add_to_post_q(audio_clip)
 			## Clear the start and end timestamps
 			# self.start_time = ''
@@ -477,6 +507,7 @@ class YetiManager():
 		self.listener.listen_stop()
 		self.streamer.stream_stop()
 	
+	"""
 	def hash_rename(self, hash_q, post_q):  #old_filename):
 		print('Hash Process Successfully Started')
 		while True:
@@ -509,7 +540,8 @@ class YetiManager():
 				## Clear the start and end timestamps
 				self.start_time = ''
 				self.end_time = ''
-				
+	"""
+	
 	"""
 	def add_to_post_q(self, filename):
 		filesize = os.path.getsize(filename)
@@ -612,8 +644,8 @@ if __name__ == "__main__":
 			yeti = YetiManager(int(os.environ.get('MIC_NUM', '0')))
 			print("[main]  Starting Audio Process")
 			yeti.audio_process.start()
-			print("[main]  Starting Hash Process")
-			yeti.hash_process.start()
+			# print("[main]  Starting Hash Process")
+			# yeti.hash_process.start()
 			print("[main]  Starting Posting Process")
 			yeti.posting_process.start()
 
