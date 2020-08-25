@@ -30,7 +30,7 @@ else:
 	import typing 
 
 	class SensorBase():
-		def __init__(self, compnent_site='compnent_site', component_type='component_type', component_id=None,
+		def __init__(self, component_site='component_site', component_type='component_type', component_id=None,
 						 component_name='component_name', topics='CNC.CONTROL.*',
 						 component_friendly_name="component_friendly_name"):
 			self.component_site = component_site
@@ -170,13 +170,13 @@ class MicrophoneSensor(SensorBase):
 
 		self.streamer = VLCAudioStreamer(self.stream_name, self.settings, self.stream_rtp_addr, dest_port=self.stream_rtp_port, 
 				loopback_addr=self.loopback_addr, loopback_port=self.loopback_port, loopback_name=self.loopback_name,
-				verbose_level=self.verbose_level, executable=self.vlc_exe, protocol=self.streaming_protocol)
+				verbose_level=self.verbose_level, executable=self.vlc_exe, protocol=self.streaming_protocol, logger=self.my_logger)
 		## For DEBUG:
 		# self.streamer.display_stream_command()
 
 		self.listener = VLCAudioListener(self.listener_name, self.settings, 
 				capture_format=self.recording_format, capture_duration=self.file_duration, 
-				verbose_level=self.verbose_level, executable=self.vlc_exe, protocol=self.streaming_protocol)
+				verbose_level=self.verbose_level, executable=self.vlc_exe, protocol=self.streaming_protocol, logger=self.my_logger)
 		## For DEBUG:
 		# self.listener.display_listen_command()
 
@@ -344,10 +344,10 @@ class MicrophoneSensor(SensorBase):
 		self.my_logger.info('Posting Process Successfully Started')
 		while True:
 			while not post_q.empty():
+				## Get the associated info from the message
 				message = post_q.get()
 				filename = message["filename"]
 				self.my_logger.info(f'Posting process received a new file ({filename})')
-				## Get the associated info from the message
 				calibration_flag = message["calibration"]
 				filesize = message["file_size"]
 				sha = message["sha"]
@@ -355,14 +355,16 @@ class MicrophoneSensor(SensorBase):
 				end_time = message["end_t"]
 
 				if DRY_RUN:
-					self.my_logger.info(f"[MOCK-post_to_cdn]  Posting data to CDN: {message}")
-					time.sleep(1)
-					self.my_logger.info(f"[MOCK-post_to_cdn]  Post to CDN was successful --> removing file '{filename}'")
-					os.remove(filename)
-					continue
-
-				self.my_logger.info('Posting to the CDN ...')
+					try:
+						self.my_logger.info(f"[MOCK-post_to_cdn]  Posting data to CDN: {message}")
+						time.sleep(1)
+						self.my_logger.info(f"[MOCK-post_to_cdn]  Post to CDN was successful --> removing file '{filename}'")
+						os.remove(filename)
+					finally:
+						continue
+				
 				try:
+					self.my_logger.info('Posting to the CDN ...')
 					files = {'files': open(filename, 'rb')}
 					response = requests.post(f'http://{cdn_url}:{cdn_port}/upload', files=files)
 					fileid = response.text.split()[-1]
@@ -556,8 +558,11 @@ if __name__ == "__main__":
 			## Break out of the container while loop / raise an exception to restart container?
 
 		except KeyboardInterrupt:
-			sensor.do_deactivate('^C received, deactivating...')
-			sensor.shutdown()
+			if sensor is not None:
+				sensor.do_deactivate('^C received, deactivating...')
+				sensor.shutdown()
+			else:
+				print('^C received, aborting...')
 			time.sleep(1)
 			sys.exit(0)
 		except Exception as exc:
