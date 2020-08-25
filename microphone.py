@@ -360,8 +360,9 @@ class MicrophoneSensor(SensorBase):
 						time.sleep(1)
 						self.my_logger.info(f"[MOCK-post_to_cdn]  Post to CDN was successful --> removing file '{filename}'")
 						os.remove(filename)
-					finally:
-						continue
+					except:
+						pass
+					continue
 				
 				try:
 					self.my_logger.info('Posting to the CDN ...')
