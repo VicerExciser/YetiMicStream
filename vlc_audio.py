@@ -320,6 +320,7 @@ class VLCAudioListener(VLCAudioBase):
 	def get_recent_clip(self):
 		## FIXME: Is this really the best way to go about this? This may require the listener's own collection of unprocessed files,
 		##        in case of a pipeline backup (i.e., if CDN or Kafka communications issues occur)
+		## ^ Honestly, there should only ever be enough overlap between the recording audio process && the audio hashing process to miss a single file... so this may be sufficient
 		current_clip_name = self.__current_clip_name
 		self.__current_clip_name = None
 		return current_clip_name

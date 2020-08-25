@@ -214,14 +214,17 @@ class MicrophoneSensor(SensorBase):
 				self.__device_name = 'Microphone'
 		return self.__device_name
 
+
 	@property
 	def stream_mrl(self):
 		""" Returns the Media Resource Locator (MRL) for the Yeti mic to be used as an audio input with VLC. """
 		return f"alsa://hw:{self.device_name}" if sys.platform != "darwin" else "qtsound://"
 
+
 	@property
 	def loop_mrl(self):
 		return f"rtp://@{self.loopback_addr}:{self.loopback_port}"
+
 
 	@property
 	def stream_target_url(self):
@@ -286,7 +289,7 @@ class MicrophoneSensor(SensorBase):
 	
 
 	def hash_audio_for_post(self, hash_q, post_q):
-		self.my_logger.info('Hash Process Successfully Started')
+		self.my_logger.info('[hash_audio_for_post]  Hash Process Successfully Started')
 		while True:
 			while not hash_q.empty():
 				try:
@@ -338,7 +341,7 @@ class MicrophoneSensor(SensorBase):
 		posts the recorded .wav file to the CDN then runs several checks to ensure it was properly placed there.
 		:return:
 		"""
-		self.my_logger.info('Posting Process Successfully Started')
+		self.my_logger.info('[post_cdn]  Posting Process Successfully Started')
 		while True:
 			while not post_q.empty():
 				## Get the associated info from the message
