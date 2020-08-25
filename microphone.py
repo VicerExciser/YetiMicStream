@@ -48,14 +48,14 @@ else:
 
 		def start(self):
 			self.set_ready(True)
-			self.update_state("Running")
+			self.update_state("Activated")
 
 		def add_message_callback(self, value, message):
 			pass
 
 		def update_state(self, new_state):
 			self.__state = new_state
-			print(f"[update_state] New state:  {new_state}")
+			print(f"[{self.__class__.__name__}]\t[update_state]  New state:  {new_state}")
 
 		def shutdown(self):
 			pass
@@ -65,7 +65,7 @@ else:
 				   message_refs: typing.List[str] = None,
 				   component_name: typing.Optional[str] = None,
 				   component_site: typing.Optional[str] = None):
-			print(f"[send_alert] Severity: {severity}; Title: {title}; Text: {text}")
+			print(f"[{self.__class__.__name__}]\t[send_alert]  Severity: {severity}; Title: {title}; Text: {text}")
 
 		@staticmethod
 		def _get_timestamp():
@@ -131,7 +131,7 @@ class MicrophoneSensor(SensorBase):
 		self.calibration_duration = 31
 
 		self.my_logger = get_logger('microphone')
-		self.my_logger.info('My id: {}'.format(self.component_id))
+		self.my_logger.info('[{}]  My id: {}'.format(self.__class__.__name__, self.component_id))
 		self.update_state("Initializing")
 
 		if not SEGREGATED_TEST_MODE:
@@ -229,14 +229,14 @@ class MicrophoneSensor(SensorBase):
 	
 	
 	def get_audio(self, hash_q, duration_lock, calibration_flag, calibration_lock):
-		self.my_logger.info('Audio Process Successfully Started')
-		self.my_logger.info(f'Initializing VLC live-stream of audio data to target address ({self.stream_target_url})')
+		self.my_logger.info('[get_audio]  Audio Process Successfully Started')
+		self.my_logger.info(f'[get_audio]  Initializing VLC live-stream of audio data to target address ({self.stream_target_url})')
 		self.streamer.stream_start()
 		self.update_state("Streaming")
 		time.sleep(3)   ## Slight delay to allow VLC stream to init && stabilize
 		calibrating = False
-		self.my_logger.info(f'Initializing VLC loopback listener for recording audio data ({self.loop_mrl})')
-		self.my_logger.info('Recording...')
+		self.my_logger.info(f'[get_audio]  Initializing VLC loopback listener for recording audio data ({self.loop_mrl})')
+		self.my_logger.info('[get_audio]  Recording...')
 		self.update_state("Recording")
 		while True:
 			if self.duration_update:
@@ -253,7 +253,7 @@ class MicrophoneSensor(SensorBase):
 				if calibration_flag.value:
 					self.update_state("Calibrating")
 					calibrating = True
-					self.my_logger.info("Beginning Calibration")
+					self.my_logger.info("[get_audio]  Beginning Calibration")
 			try:
 				record_seconds = self.listener.recording_duration if not calibrating else self.calibration_duration
 				clip_start_time = SensorBase._get_timestamp()
@@ -267,19 +267,16 @@ class MicrophoneSensor(SensorBase):
 				if os.path.isfile(temp_recording_name):
 					hash_q.put((temp_recording_name, clip_start_time, clip_end_time, calibrating))
 				else:
-					self.my_logger.error(f"[get_audio] No saved audio file named '{temp_recording_name}' was found!")
+					self.my_logger.error(f"[get_audio]  No saved audio file named '{temp_recording_name}' was found!")
 					time.sleep(1)
 				if calibrating:
 					calibrating = False
-					self.my_logger.info("Ending Calibration")
+					self.my_logger.info("[get_audio]  Ending Calibration")
 					with calibration_lock:
 						calibration_flag.value = 0
 					self.update_state("Recording")
 			except Exception as exc_1:
-					self.my_logger.error("Error in get_audio: {}".format(exc_1))
-			# finally:
-			#   if calibrating:
-			#       self.listener.set_recording_duration(self.file_duration)
+					self.my_logger.error("[get_audio]  Error in get_audio: {}".format(exc_1))
 
 				
 	def kill_all_vlc(self):
@@ -295,7 +292,7 @@ class MicrophoneSensor(SensorBase):
 				try:
 					unprocessed_data = hash_q.get()
 					temp_filename = unprocessed_data[0]
-					self.my_logger.info(f'Hash process received a new file ({temp_filename})')
+					self.my_logger.info(f'[hash_audio_for_post]  Hash process received a new file ({temp_filename})')
 					## Need to do this to prevent self.start_time and end_time from being overwritten
 					self.start_time = unprocessed_data[1]
 					self.end_time = unprocessed_data[2]
@@ -303,7 +300,7 @@ class MicrophoneSensor(SensorBase):
 					## Rename recording && add it to the CDN post queue
 					self.hash_rename(post_q, audio_name=temp_filename, calibration_flag=calibration_flag)
 				except Exception as e:
-					self.my_logger.error("Exception in hash_audio_for_post: {}".format(e))
+					self.my_logger.error("[hash_audio_for_post]  Exception in hash_audio_for_post: {}".format(e))
 
 					
 	def hash_rename(self, post_q, audio_name="output0.wav", calibration_flag=False):
@@ -314,10 +311,10 @@ class MicrophoneSensor(SensorBase):
 				self.filename = h.hexdigest() + f".{self.recording_format}"
 			## Rename the audio file to its SHA
 			os.rename(audio_name, self.filename)
-			self.my_logger.info(f"Audio file '{audio_name}' has been renamed to '{self.filename}'")
+			self.my_logger.info(f"[hash_rename]  Audio file '{audio_name}' has been renamed to '{self.filename}'")
 			self.add_to_post_q(post_q, self.filename, calibration_flag=calibration_flag)
 		except Exception as e:
-			self.my_logger.error("Exception in hash_rename: {}".format(e))
+			self.my_logger.error("[hash_rename]  Exception in hash_rename: {}".format(e))
 				
 
 	def add_to_post_q(self, post_q, filename, calibration_flag=False):
@@ -347,7 +344,7 @@ class MicrophoneSensor(SensorBase):
 				## Get the associated info from the message
 				message = post_q.get()
 				filename = message["filename"]
-				self.my_logger.info(f'Posting process received a new file ({filename})')
+				self.my_logger.info(f'[post_cdn]  Posting process received a new file ({filename})')
 				calibration_flag = message["calibration"]
 				filesize = message["file_size"]
 				sha = message["sha"]
@@ -356,41 +353,41 @@ class MicrophoneSensor(SensorBase):
 
 				if DRY_RUN:
 					try:
-						self.my_logger.info(f"[MOCK-post_to_cdn]  Posting data to CDN: {message}")
+						self.my_logger.info(f"[MOCK-post_cdn]  Posting data to CDN: {message}")
 						time.sleep(1)
-						self.my_logger.info(f"[MOCK-post_to_cdn]  Post to CDN was successful --> removing file '{filename}'")
+						self.my_logger.info(f"[MOCK-post_cdn]  Post to CDN was successful --> removing file '{filename}'")
 						os.remove(filename)
 					except:
 						pass
 					continue
 				
 				try:
-					self.my_logger.info('Posting to the CDN ...')
+					self.my_logger.info('[post_cdn]  Posting to the CDN ...')
 					files = {'files': open(filename, 'rb')}
 					response = requests.post(f'http://{cdn_url}:{cdn_port}/upload', files=files)
 					fileid = response.text.split()[-1]
 
 					## Ensure SHA posted matches the current file's SHA
 					if fileid != sha:
-						self.my_logger.error(f'SHA mismatch error!: file:{sha}, POST:{fileid}')
+						self.my_logger.error(f'[post_cdn]  SHA mismatch error!: file:{sha}, POST:{fileid}')
 					confirmation = requests.get(f'http://{cdn_url}:{cdn_port}/{fileid}')
 					if str(confirmation.status_code) != '200':
-						self.my_logger.error(f'Upload error: HTTP {confirmation.status_code}')
+						self.my_logger.error(f'[post_cdn]  Upload error: HTTP {confirmation.status_code}')
 						'''
 						If POST failed, need to alert if the recorder starts filling up with .wavs
 						The process will exit if the device runs out of space.
 						'''
 						usage = shutil.disk_usage('/')
 						percent_used = usage[1] / usage[0] * 100
-						self.my_logger.info('Recording not deleted. System storage used: %.2f%%' % percent_used)
+						self.my_logger.info('[post_cdn]  Recording not deleted. System storage used: %.2f%%' % percent_used)
 						if percent_used > 95:
-							self.my_logger.critical('Microphone crash imminent: Storage used: %.2f%%' % percent_used)
+							self.my_logger.critical('[post_cdn]  Microphone crash imminent: Storage used: %.2f%%' % percent_used)
 						elif percent_used > 90:
-							self.my_logger.warning('System nearly full. Storage used: %.2f%%' % percent_used)
+							self.my_logger.warning('[post_cdn]  System nearly full. Storage used: %.2f%%' % percent_used)
 					elif fileid == sha:   ## And str(confirmation.status_code) == '200' implied
 						os.remove(filename)
-						self.my_logger.info("Post to CDN was successful")
-						self.my_logger.info("Deleted file: {}".format(filename))
+						self.my_logger.info("[post_cdn]  Post to CDN was successful")
+						self.my_logger.info("[post_cdn]  Deleted file: {}".format(filename))
 
 						kafka_q.put({'text': f'{filename}', 'details': {"startTime": str(start_time),
 																		"endTime": str(end_time),
@@ -401,7 +398,7 @@ class MicrophoneSensor(SensorBase):
 																		"calibration_flag": calibration_flag}})
 				
 				except (NewConnectionError, Exception) as e:
-					self.my_logger.error(f'\npostCDN exception: {e}\n')
+					self.my_logger.error(f'\n[post_cdn]  postCDN exception: {e}\n')
 					tb = traceback.format_exc()
 					self.my_logger.error(tb)
 
@@ -422,12 +419,13 @@ class MicrophoneSensor(SensorBase):
 				self.end_time = dt.datetime.fromtimestamp(os.stat(f).st_mtime).strftime("%b %d, %Y @ %H:%M:%S.%f")[:-3]
 				## Low priority: TODO: rebuild start time using end time - sample rate * number of frames
 				if "output" in f:   ## Last recording not renamed to SHA1
-					f.close()
+					if hasattr(f, 'closed') and not f.closed:
+						f.close()
 					self.hash_rename(post_queue, audio_name=f)
 				else:               ## Files already renamed to SHA1
 					self.add_to_post_q(post_queue, f)
 		if notify:
-			self.my_logger.warning("Residual .wav(s) found! Files sent to the CDN posting queue...")
+			self.my_logger.warning("[wav_check]  Residual .wav(s) found! Files sent to the CDN posting queue...")
 
 
 	@staticmethod
@@ -461,7 +459,7 @@ class MicrophoneSensor(SensorBase):
 		super(MicrophoneSensor, self).shutdown()
 
 	def do_parse_control_message(self, validated_message):
-		self.my_logger.info(f'Received: {validated_message}')
+		self.my_logger.info(f'[do_parse_control_message]  Received: {validated_message}')
 		try:
 			command_details = validated_message['messageBody']['commandDetail']
 			command_message_id = validated_message['messageId']
@@ -474,9 +472,9 @@ class MicrophoneSensor(SensorBase):
 						if command_value != self.file_duration:
 							self.update_file_duration(command_value)
 						else:
-							self.my_logger.warning('Recording duration already set to the requested value.')
+							self.my_logger.warning('[do_parse_control_message]  Recording duration already set to the requested value.')
 					else:
-						self.my_logger.error('Must enter a positive value for the recording length.')
+						self.my_logger.error('[do_parse_control_message]  Must enter a positive value for the recording length.')
 				## Debug command to aid in matching the commanded recording length to the actual length of audio recorded
 				elif command == 'multiplier':
 					if self.sampling_multiplier != command_value:
@@ -485,7 +483,7 @@ class MicrophoneSensor(SensorBase):
 					else:
 						self.my_logger.warning('Multiplier already set to the requested value.')
 			else:   ## Calibrate
-				self.my_logger.info('Received Calibrate Command. Setting do_calibration_flag')
+				self.my_logger.info('[do_parse_control_message]  Received Calibrate Command. Setting do_calibration_flag')
 				with self.calibration_lock:
 					self.do_calibration_flag.value = 1
 		except Exception as e:
@@ -497,7 +495,7 @@ class MicrophoneSensor(SensorBase):
 			self.send_alert("ACK", 6, 2, 'Command Acknowledgement', f"Acknowledgement of: {command}", None, [message_reference])
 		else:
 			self.send_alert(model.AlertMessageSubtypes.Acknowledgement.value, 6, 2, 'Command Acknowledgement', f"Acknowledgement of: {command}", None, [message_reference])
-		self.my_logger.info('Acknowledgement Sent')
+		self.my_logger.info('[send_acknowledgement]  Acknowledgement Sent')
 
 
 	def update_file_duration(self, next_duration):
@@ -530,11 +528,11 @@ if __name__ == "__main__":
 			mic_number = os.environ.get('MIC_NUM', '0')
 			sensor = MicrophoneSensor(room, int(mic_number))
 			sensor.start()
-			sensor.my_logger.info(" Starting Audio Process ...")
+			sensor.my_logger.info("[main]  Starting Audio Process ...")
 			sensor.audio_process.start()
-			sensor.my_logger.info(" Starting Hash Process ...")
+			sensor.my_logger.info("[main]  Starting Hash Process ...")
 			sensor.hash_process.start()
-			sensor.my_logger.info(" Starting Posting Process ...")
+			sensor.my_logger.info("[main]  Starting Posting Process ...")
 			sensor.posting_process.start()
 
 			while True:
@@ -546,13 +544,13 @@ if __name__ == "__main__":
 							sensor.send_alert("Status", 5, 2, 'Microphone Calibration CDN Hash', data['text'], data['details'])
 						else:
 							sensor.send_alert(model.AlertMessageSubtypes.Status.value, 5, 2, 'Microphone Calibration CDN Hash', data['text'], data['details'])
-						sensor.my_logger.info(f"Calibration Alert sent to Kafka: {data['text']}")
+						sensor.my_logger.info(f"[main]  Calibration Alert sent to Kafka: {data['text']}")
 					else:
 						if SEGREGATED_TEST_MODE:
 							sensor.send_alert("Status", 5, 2, 'Microphone CDN Hash', data['text'], data['details'])
 						else:
 							sensor.send_alert(model.AlertMessageSubtypes.Status.value, 5, 2, 'Microphone CDN Hash', data['text'], data['details'])
-						sensor.my_logger.info(f"Hash Alert sent to Kafka: {data['text']}")
+						sensor.my_logger.info(f"[main]  Hash Alert sent to Kafka: {data['text']}")
 
 				# time.sleep(0.1)
 			## Do sensor.shutdown()?
