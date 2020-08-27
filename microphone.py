@@ -6,9 +6,10 @@ import hashlib
 import requests
 import traceback
 import datetime as dt
+from signal import SIGKILL
 from urllib3.exceptions import NewConnectionError
 from multiprocessing import Queue, Process, Lock, Value 
-from vlc_audio_util import VLCAudioSettings, VLCAudioStreamer, VLCAudioListener
+from vlc_audio_util import VLCAudioSettings, VLCAudioStreamer, VLCAudioListener, VLCAudioBase
 
 """
 To receive the audio stream from another machine, simply run the command:
@@ -108,11 +109,6 @@ cdn_port = os.getenv('CDNPORT', '5000')
 ##=============================================================================
 ## Debug functions
 
-def get_pid_list_for(proc_name):
-	pidof_res = os.popen(f'pidof {proc_name}').read()[:-1]
-	return pidof_res.split(' ')
-
-
 def print_proc_info(process=None, pname=None):
 	info_banner = "-"*80
 	print(f"{info_banner}\nLast background job PID:  {os.popen('echo $?').read()[:-1]}\n")
@@ -121,7 +117,7 @@ def print_proc_info(process=None, pname=None):
 			print(f"Recent {pname} process PID:  {process.pid}")
 		else:
 			print(f"Recent process PID:  {process.pid}")
-	vlc_pids = get_pid_list_for('vlc')
+	vlc_pids = VLCAudioBase.get_running_vlc_pid_list()
 	print("\nVLC PIDs:")
 	for pid in vlc_pids:
 		print(f"\t{pid}")
@@ -137,7 +133,12 @@ class MicrophoneSensor(SensorBase):
 	Subclass for a Yeti Microphone.
 	Inherits from and implements the CNCBase abstract class.
 	"""
+	""" TODO
+		TODO
+		TODO
+	"""
 	RECALIB_ON_REBOOT = True
+	MAX_VLC_INSTANCES = 2
 
 	def __init__(self, component_site, mic_number):
 		super().__init__(component_site=component_site,
@@ -184,8 +185,8 @@ class MicrophoneSensor(SensorBase):
 		self.hash_queue = Queue()
 		self.kafka_queue = Queue()  ## Needed since producers cannot be shared across processes
 		
-		## Audio settings for streaming && recording
-		## TODO: Read these configuration values in from a file ( or set them as environment variables )
+		## VLC audio settings for streaming && recording
+		## TODO: Read these configuration values in from a config file ( or set them as environment variables )
 		self.stream_rtp_addr = os.getenv("STREAM_RTP_ADDR", "239.255.12.42")
 		self.stream_rtp_port = int(os.getenv("STREAM_RTP_PORT", "1234"))
 		self.loopback_addr = os.getenv("STREAM_LOOP_ADDR", "127.0.0.1")     ## <-- Address to listen on for stream audio processing/saving
@@ -230,7 +231,6 @@ class MicrophoneSensor(SensorBase):
 		if DEBUG:
 			self.listener.display_listen_command()
 
-
 		## Processes
 		self.my_logger.info(f'[{self.__class__.__name__}]  Initializing Audio Process')
 		self.audio_process = Process(target=self.get_audio, args=(self.hash_queue, self.duration_lock, 
@@ -257,6 +257,10 @@ class MicrophoneSensor(SensorBase):
 
 	@property
 	def device_name(self):
+		""" TODO
+			TODO
+			TODO
+		"""
 		if self.__device_name is None:
 			try:
 				self.__device_name = [card[card.find('[')+1:card.find(']')].strip() for card in os.popen('cat /proc/asound/cards').read().split('\n') if all(x in card for x in ['Yeti', '['])][0]
@@ -279,15 +283,27 @@ class MicrophoneSensor(SensorBase):
 
 	@property
 	def loop_mrl(self):
+		""" TODO
+			TODO
+			TODO
+		"""
 		return f"rtp://@{self.loopback_addr}:{self.loopback_port}"
 
 
 	@property
 	def stream_target_url(self):
+		""" TODO
+			TODO
+			TODO
+		"""
 		return f"rtp://@{self.stream_rtp_addr}:{self.stream_rtp_port}"
-	
-	
+
+
 	def get_audio(self, hash_q, duration_lock, calibration_flag, calibration_lock):
+		""" TODO
+			TODO
+			TODO
+		"""
 		self.my_logger.info('[get_audio]  Audio Process Successfully Started')
 		self.my_logger.info(f'[get_audio]  Initializing VLC live-stream of audio data to target address ({self.stream_target_url})')
 		self.streamer.stream_start() 	#use_shell=True)
@@ -343,19 +359,40 @@ class MicrophoneSensor(SensorBase):
 						calibration_flag.value = 0
 					self.update_state("Recording")
 
+				self.constrain_vlc_instances()
+
 			except Exception as exc_1:
 					self.my_logger.error("[get_audio]  Error in get_audio: {}".format(exc_1))
 
-				
+	
+	def constrain_vlc_instances(self):
+		"""	Ensures that there are never more than { MAX_VLC_INSTANCES } VLC jobs running at any given time. """
+		vlc_pids = VLCAudioBase.get_running_vlc_pid_list()
+		if len(vlc_pids) > self.MAX_VLC_INSTANCES:
+			self.my_logger.warning(f"[constrain_vlc_instances]  More than {self.MAX_VLC_INSTANCES} VLC jobs active, now purging listeners...")
+			## If more than 2 VLC processes active, kill all listeners (all PIDs but the streamer's) and begin the get_audio process again
+			for idx, pid in enumerate(vlc_pids):
+				if pid != self.streamer.pid:
+					self.my_logger.info(f"[constrain_vlc_instances]  Killing VLC process #{idx} with PID {pid}")
+					try:
+						os.kill(pid, SIGKILL)
+					except Exception as exc:
+						self.my_logger.error("[constrain_vlc_instances]  Error in constrain_vlc_instances: {}".format(exc))
+
+	
 	def kill_all_vlc(self, redundant_kill=False):
 		self.my_logger.info(f"\n[{self.__class__.__name__}]  Aborting: Terminating all VLC activities.")
 		self.listener.listen_stop()
 		self.streamer.stream_stop()
-		if redundant_kill:
+		if redundant_kill or len(VLCAudioBase.get_running_vlc_pid_list()) > 0:
 			os.system('pkill vlc')
 	
 
 	def hash_audio_for_post(self, hash_q, post_q):
+		""" TODO
+			TODO
+			TODO
+		"""
 		self.my_logger.info('[hash_audio_for_post]  Hash Process Successfully Started')
 		while True:
 			while not hash_q.empty():
@@ -374,6 +411,10 @@ class MicrophoneSensor(SensorBase):
 
 					
 	def hash_rename(self, post_q, audio_name="output0.wav", calibration_flag=False):
+		""" TODO
+			TODO
+			TODO
+		"""
 		try:
 			with open(audio_name, 'rb') as f:
 				audio_data = f.read()
@@ -388,6 +429,10 @@ class MicrophoneSensor(SensorBase):
 				
 
 	def add_to_post_q(self, post_q, filename, calibration_flag=False):
+		""" TODO
+			TODO
+			TODO
+		"""
 		filesize = os.path.getsize(filename)
 		## Put all the data into the posting queue as a dictionary for easy unpacking
 		post_q.put({
@@ -615,6 +660,17 @@ if __name__ == "__main__":
 			sensor.my_logger.info("[main]  Starting Posting Process ...")
 			sensor.posting_process.start()
 
+			using_nohup = any([sensor.streamer.nohup, sensor.listener.nohup])
+			sensor.my_logger.info(f"[main]  VLC processes using 'nohup':  {using_nohup}")
+			nohup_file = os.path.join(os.getcwd(), 'nohup.out')
+			try:
+				nohup_out_size = os.stat(nohup_file).st_size
+			# if os.path.exists(nohup_file):
+			# 	nohup_out_size = os.path.getsize(nohup_file)
+			# else:
+			except:
+				nohup_out_size = 0
+
 			while True:
 				if not sensor.kafka_queue.empty():
 					data = sensor.kafka_hash_q.get()
@@ -631,6 +687,18 @@ if __name__ == "__main__":
 						else:
 							sensor.send_alert(model.AlertMessageSubtypes.Status.value, 5, 2, 'Microphone CDN Hash', data['text'], data['details'])
 						sensor.my_logger.info(f"[main]  Hash Alert sent to Kafka: {data['text']}")
+
+				if using_nohup:
+					try:
+						new_nohup_out_size = os.stat(nohup_file).st_size
+						if new_nohup_out_size > nohup_out_size:
+							sensor.my_logger.info(f"[main]  New file size of '{nohup_file}':  {new_nohup_out_size} Bytes")
+							nohup_out_size = new_nohup_out_size
+						## If the nohup.out file grows too large, cat /dev/null to it to clear the file contents without stopping the nohup process
+						if nohup_out_size > 20000:
+							os.system(f'cat /dev/null > {nohup_file}')
+					except (OSError, FileNotFoundError) as nohup_exc:
+						sensor.my_logger.error("Error occurred in main loop regarding nohup.out file management: {}".format(nohup_exc))
 
 				# time.sleep(0.1)
 			## Do sensor.shutdown()?

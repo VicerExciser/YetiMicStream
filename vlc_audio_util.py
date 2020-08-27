@@ -5,9 +5,12 @@ from dataclasses import dataclass
 import subprocess as sproc
 import shlex
 
-
 ##=============================================================================
 
+""" TODO
+	TODO
+	TODO
+"""
 @dataclass
 class VLCAudioSettings:
 	## Microphone input MRL for the outgoing live-stream
@@ -27,6 +30,10 @@ class VLCAudioSettings:
 ##=============================================================================
 
 class VLCAudioBase():
+	""" TODO
+		TODO
+		TODO
+	"""
 	def __init__(self, audio_settings, verbose_level, executable, protocol):
 		assert isinstance(audio_settings, VLCAudioSettings)
 		self.cfg = audio_settings 	 ## Must be an `AudioSettings` dataclass instance
@@ -37,11 +44,19 @@ class VLCAudioBase():
 
 	@property
 	def opt_str(self):
+		""" TODO
+			TODO
+			TODO
+		"""
 		return f'{self.v_opt} --no-sout-video --sout-audio --ttl=1 --sout-keep'
 	
 
 	@property
 	def input_stream(self):
+		""" TODO
+			TODO
+			TODO
+		"""
 		if isinstance(self, VLCAudioStreamer):
 			return self.cfg.tx_mrl
 		elif isinstance(self, VLCAudioListener):
@@ -51,6 +66,10 @@ class VLCAudioBase():
 
 	@property
 	def transcode_str(self):
+		""" TODO
+			TODO
+			TODO
+		"""
 		## Alternatively, could make this a method within the VLCAudioSettings dataclass 
 		return ''.join([
 				"transcode{acodec=", self.cfg.codec, 
@@ -62,8 +81,17 @@ class VLCAudioBase():
 
 
 	def update_audio_settings(self, new_settings):
+		""" TODO
+			TODO
+			TODO
+		"""
 		if isinstance(new_settings, VLCAudioSettings):
 			self.cfg = new_settings 	 ## Must be an `AudioSettings` dataclass instance
+
+
+	@staticmethod
+	def get_running_vlc_pid_list(): 
+		return [int(pid) for pid in os.popen(f'pidof vlc').read()[:-1].split(' ') if pid]
 
 
 ##=============================================================================
@@ -76,8 +104,9 @@ class VLCAudioBase():
 	dst=rtp{mux=ts,dst=127.0.0.1,port=1234,sdp=sap,name='loopback_0'}}" alsa://hw:Microphone &
 """
 class VLCAudioStreamer(VLCAudioBase):
-	"""
-	
+	""" TODO
+		TODO
+		TODO
 	"""
 	def __init__(self, name, audio_settings, dest_ip_address, dest_port=1234, 
 				loopback_addr='127.0.0.1', loopback_port=1234, loopback_name='loopback', 
@@ -144,10 +173,26 @@ class VLCAudioStreamer(VLCAudioBase):
 		Returns the streaming VLC background job's PID if the stream's process attribute (an 
 		instance of the Popen class from the subprocess Python module) is not None. 
 		"""
-		return self.process.pid if self.process else None
+		# return self.process.pid if self.process else None
 		## ^ NOTE: If Popen process was created with shell=True, then process.pid will return PID of parent shell ('sh <defunct>').
 		## ^^ If this is the case, then 'process.kill()' or 'process.terminate()' will NOT kill the spawned VLC job.
 		## ^^^ See:  https://stackoverflow.com/questions/31039972/python-subprocess-popen-pid-return-the-pid-of-the-parent-script
+		if self.process is None:
+			return None
+		vlc_pid_list = VLCAudioBase.get_running_vlc_pid_list()
+		if len(vlc_pid_list) == 1 and self.is_running:
+			parent_pid = vlc_pid_list[0]
+		else:
+			parent_pid = self.process.pid
+			if self.__last_cmd_used_shell:
+				## If stream launched with 'subprocess.Popen(stream_cmd, shell=True)', 
+				## will need to search thru list of active VLC PIDs for successor to parent PID
+				if (parent_pid + 1) in vlc_pid_list:
+					parent_pid += 1
+				elif (parent_pid + 2) in vlc_pid_list:
+					parent_pid += 2
+		return parent_pid 
+		
 	
 
 	@property
@@ -211,18 +256,15 @@ class VLCAudioStreamer(VLCAudioBase):
 		"""
 		Kills the VLC audio stream; the optional 'redundant_kill' flag is used only for issuing a 
 		redundant kill command to ensure that the background stream is halted in the case subprocess.Popen.kill() command was effective in halting the audio 
-		live-stream, then issuing a redundant kill command for the background stream process's PID 
-		if still alive in the process
-
+		live-stream, then issuing a redundant kill command for the background stream process's PID if still found alive.
 		"""
 		pid = self.pid 
 		if self.process:
 			if not self.__last_cmd_used_shell:
 				self.process.kill()
 			else:
-				for p in os.popen(f'pidof vlc').read()[:-1].split(' '):
+				for found_pid in VLCAudioBase.get_running_vlc_pid_list():  #os.popen(f'pidof vlc').read()[:-1].split(' '):
 					try:
-						found_pid = int(p)
 						if found_pid == pid or found_pid == (pid + 1) or found_pid == (pid + 2):
 							msg = f"[stream_stop]  Now killing VLC child with PID {found_pid}"
 							if self.stream_log:
@@ -279,6 +321,10 @@ class VLCAudioStreamer(VLCAudioBase):
 """
 
 class VLCAudioListener(VLCAudioBase):
+	""" TODO
+		TODO
+		TODO
+	"""
 	def __init__(self, name, audio_settings, capture_format='wav', capture_duration=30, 
 				verbose_level=0, executable='cvlc', protocol='rtp', logger=None, use_nohup=True):
 		super().__init__(audio_settings, verbose_level, executable, protocol)
@@ -299,6 +345,10 @@ class VLCAudioListener(VLCAudioBase):
 
 	@property
 	def clip_filename(self):
+		""" TODO
+			TODO
+			TODO
+		"""
 		clip_num = 0
 		while f"output{clip_num}.{self.clip_format}" in (os.listdir()):
 			clip_num += 1
@@ -308,16 +358,28 @@ class VLCAudioListener(VLCAudioBase):
 
 	@property
 	def save_clip_str(self):
+		""" TODO
+			TODO
+			TODO
+		"""
 		return ''.join(["std{access=file,mux=", self.clip_format, ",dst=", self.clip_filename, "}"])
 	
 
 	@property
 	def sout(self):
+		""" TODO
+			TODO
+			TODO
+		"""
 		return f"#{self.transcode_str}:{self.save_clip_str}"
 
 
 	@property
 	def listen_cmd(self): 	#, nohup=True): 	#nohup=False):
+		""" TODO
+			TODO
+			TODO
+		"""
 		self.__listen_cmd = f'{self.vlc} {self.opt_str} --sout "{self.sout}" {self.input_stream} vlc://quit &'
 		if self.nohup:
 			self.__listen_cmd = 'nohup ' + self.__listen_cmd
@@ -326,10 +388,25 @@ class VLCAudioListener(VLCAudioBase):
 
 	@property
 	def pid(self):
-		return self.process.pid if self.process else None
+		# return self.process.pid if self.process else None
 		## ^ NOTE: If Popen process was created with shell=True, then process.pid will return PID of parent shell ('sh <defunct>').
 		## ^^ If this is the case, then 'process.kill()' or 'process.terminate()' will NOT kill the spawned VLC job.
 		## ^^^ See:  https://stackoverflow.com/questions/31039972/python-subprocess-popen-pid-return-the-pid-of-the-parent-script
+		if self.process is None:
+			return None
+		vlc_pid_list = VLCAudioBase.get_running_vlc_pid_list()
+		if len(vlc_pid_list) == 1 and self.is_running:
+			parent_pid = vlc_pid_list[0]
+		else:
+			parent_pid = self.process.pid
+			if self.__last_cmd_used_shell:
+				## If listener launched with 'subprocess.Popen(listen_cmd, shell=True)', 
+				## will need to search thru list of active VLC PIDs for successor to parent PID
+				if (parent_pid + 1) in vlc_pid_list:
+					parent_pid += 1
+				elif (parent_pid + 2) in vlc_pid_list:
+					parent_pid += 2
+		return parent_pid 
 
 
 	@property
@@ -372,6 +449,10 @@ class VLCAudioListener(VLCAudioBase):
 
 
 	def listen_start(self, use_shell=False): 	#use_shell=True):
+		""" TODO
+			TODO
+			TODO
+		"""
 		if not self.is_running:
 			cmd = self.listen_cmd if use_shell else shlex.split(self.listen_cmd)
 			msg = f"[{self.name}]  Listener recording new clip:  '{self.__current_clip_name}'"
@@ -391,14 +472,17 @@ class VLCAudioListener(VLCAudioBase):
 
 
 	def listen_stop(self, redundant_kill=False):
+		""" TODO
+			TODO
+			TODO
+		"""
 		pid = self.pid
 		if self.process:
 			if not self.__last_cmd_used_shell:
 				self.process.kill()
 			else:
-				for p in os.popen(f'pidof vlc').read()[:-1].split(' '):
+				for found_pid in VLCAudioBase.get_running_vlc_pid_list():
 					try:
-						found_pid = int(p)
 						if found_pid == pid or found_pid == (pid + 1) or found_pid == (pid + 2):
 							msg = f"[listen_stop]  Now killing VLC child with PID {found_pid}"
 							if self.listen_log:
@@ -444,6 +528,10 @@ class VLCAudioListener(VLCAudioBase):
 
 
 	def get_recent_clip(self):
+		""" TODO
+			TODO
+			TODO
+		"""
 		## FIXME: Is this really the best way to go about this? This may require the listener's own collection of unprocessed files,
 		##        in case of a pipeline backup (i.e., if CDN or Kafka communications issues occur)
 		## ^ Honestly, there should only ever be enough overlap between the recording audio process && the audio hashing process to miss a single file... so this may be sufficient
