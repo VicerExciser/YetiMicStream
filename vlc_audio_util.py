@@ -5,6 +5,7 @@ from dataclasses import dataclass
 import subprocess as sproc
 import shlex
 
+
 ##=============================================================================
 
 @dataclass
@@ -66,14 +67,24 @@ class VLCAudioBase():
 
 
 ##=============================================================================
-
+"""
+~ Streaming Example ~
+[YetiAudioStreamer_0] Stream Command: 
+	cvlc -q --no-sout-video --sout-audio --ttl=1 --sout-keep --sout "#transcode{      \
+	acodec=mpga,ab=256,aenc=ffmpeg,channels=2,samplerate=44100,threads=2}:duplicate{  \
+	dst=rtp{mux=ts,dst=239.255.12.42,port=1234,sdp=sap,name='YetiAudioStream_0'},     \
+	dst=rtp{mux=ts,dst=127.0.0.1,port=1234,sdp=sap,name='loopback_0'}}" alsa://hw:Microphone &
+"""
 class VLCAudioStreamer(VLCAudioBase):
+	"""
+	
+	"""
 	def __init__(self, name, audio_settings, dest_ip_address, dest_port=1234, 
 				loopback_addr='127.0.0.1', loopback_port=1234, loopback_name='loopback', 
-				verbose_level=0, executable='cvlc', protocol='rtp', logger=None):
+				verbose_level=0, executable='cvlc', protocol='rtp', logger=None, use_nohup=True):
 		## NOTE: Currently no support for any protocol other than RTP; in future, can add support for HTTP streams
-		self.name = name 
 		super().__init__(audio_settings, verbose_level, executable, protocol)
+		self.name = name 
 		self.out_addr = dest_ip_address
 		self.out_port = dest_port
 		self.dup_out_addr = loopback_addr
@@ -82,6 +93,8 @@ class VLCAudioStreamer(VLCAudioBase):
 		self.__state = "STOPPED"
 		self.process = None
 		self.stream_log = logger
+		self.__last_cmd_used_shell = False
+		self.nohup = use_nohup
 	
 
 	@property
@@ -91,6 +104,10 @@ class VLCAudioStreamer(VLCAudioBase):
 
 	@property
 	def duplicate_str(self):
+		"""
+		Formats and returns the VLC 'duplicate' module configuration string for the streaming command;
+		this is essential for VLC to stream the audio data to multiple destinations.
+		"""
 		destination1 = ''.join(["rtp{mux=ts,dst=", self.out_addr, ",port=", str(self.out_port), ",sdp=sap,name='", self.name, "'}"])
 		destination2 = ''.join(["rtp{mux=ts,dst=", self.dup_out_addr, ",port=", str(self.dup_out_port), ",sdp=sap,name='", self.dup_out_name, "'}"])
 		return ''.join(["duplicate{dst=", destination1, ",dst=", destination2, "}"])
@@ -98,18 +115,39 @@ class VLCAudioStreamer(VLCAudioBase):
 
 	@property
 	def sout(self):
+		"""
+		Formats and returns the 'sout' stream output configuration string for the VLC command; this 
+		tells VLC how to transcode the raw audio data ('transcode_str' acquired from VLCAudioBase class)
+		and where/how to stream the transcoded audio data to its multiple target addresses.
+		"""
 		return f"#{self.transcode_str}:{self.duplicate_str}"
 
 
 	@property
-	def stream_cmd(self):
+	def stream_cmd(self): 	#, nohup=True): 	#nohup=False):
+		"""
+		This command will launch a headless VLC instance as a background job to continually stream
+		live audio data from the input stream MRL (i.e., USB microphone device identifier) to 
+		multiple target addresses (using VLC's 'duplicate' module): one being an RTP address, the
+		other being a local loopback address for a VLCAudioListener instance to bind to for capturing
+		and processing the live feed's audio data in parallel.
+		"""
 		self.__stream_cmd = f'{self.vlc} {self.opt_str} --sout "{self.sout}" {self.input_stream} &'
+		if self.nohup:
+			self.__stream_cmd = 'nohup ' + self.__stream_cmd
 		return self.__stream_cmd
 	
 
 	@property
 	def pid(self):
+		""" 
+		Returns the streaming VLC background job's PID if the stream's process attribute (an 
+		instance of the Popen class from the subprocess Python module) is not None. 
+		"""
 		return self.process.pid if self.process else None
+		## ^ NOTE: If Popen process was created with shell=True, then process.pid will return PID of parent shell ('sh <defunct>').
+		## ^^ If this is the case, then 'process.kill()' or 'process.terminate()' will NOT kill the spawned VLC job.
+		## ^^^ See:  https://stackoverflow.com/questions/31039972/python-subprocess-popen-pid-return-the-pid-of-the-parent-script
 	
 
 	@property
@@ -127,6 +165,7 @@ class VLCAudioStreamer(VLCAudioBase):
 	
 
 	def display_stream_command(self):
+		""" Mostly just for debug purposes. """
 		msg = f"[{self.name}]  Stream Command: {self.stream_cmd}"
 		if self.stream_log:
 			self.stream_log.info(msg)
@@ -144,22 +183,56 @@ class VLCAudioStreamer(VLCAudioBase):
 				print(f'\n{msg}')
 
 
-	def stream_start(self, use_shlex=False, use_shell=True):
+	def stream_start(self, use_shell=False):  #use_shell=True):
+		"""
+		Initiates the audio stream as a background job with a tailored shell command; sets the VLCAudioStreamer's 
+		process attribute to the instantiated subprocess.Popen object returned from launching the
+		stream command; setting the keyword parameter 'use_shell' to True will spawn a new shell
+		process from whence the child VLC stream job is spawned, in which case 'self.process.pid' 
+		will return the spawned shell's PID rather than the VLC PID and 'self.process.kill()' will
+		be ineffective (requiring the use of a process group by attaching a session id to the spawned
+		shell parent process); for more info, see:  
+		https://stackoverflow.com/questions/4789837/how-to-terminate-a-python-subprocess-launched-with-shell-true
+		"""
 		if not self.is_running:
-			cmd = self.stream_cmd if not use_shlex else shlex.split(self.stream_cmd)
+			cmd = self.stream_cmd if use_shell else shlex.split(self.stream_cmd)
 			self.process = sproc.Popen(cmd, shell=use_shell)
 			self.update_state("STREAMING")
+		else:
+			msg = f"[{self.name}]  Streamer is already streaming audio; call ignored."
+			if self.stream_log:
+				self.stream_log.info(msg)
+			else:
+				print(msg)
+		self.__last_cmd_used_shell = use_shell
 
 
 	def stream_stop(self, redundant_kill=False):
+		"""
+		Kills the VLC audio stream; the optional 'redundant_kill' flag is used only for issuing a 
+		redundant kill command to ensure that the background stream is halted in the case subprocess.Popen.kill() command was effective in halting the audio 
+		live-stream, then issuing a redundant kill command for the background stream process's PID 
+		if still alive in the process
+
+		"""
+		pid = self.pid 
 		if self.process:
-			self.process.kill()
-			if redundant_kill:
-				try:
-					if self.pid != -1:
-						os.kill(self.pid, SIGKILL)	## DON'T call os.kill() for pid -1!!
-				except (ProcessLookupError, TypeError):
-					pass
+			if not self.__last_cmd_used_shell:
+				self.process.kill()
+			else:
+				for p in os.popen(f'pidof vlc').read()[:-1].split(' '):
+					try:
+						found_pid = int(p)
+						if found_pid == pid or found_pid == (pid + 1) or found_pid == (pid + 2):
+							msg = f"[stream_stop]  Now killing VLC child with PID {found_pid}"
+							if self.stream_log:
+								self.stream_log.info(msg)
+							else:
+								print(msg)
+							os.kill(found_pid, SIGKILL)
+					except (ProcessLookupError, TypeError):
+						pass	## Ignore errors if the stream process no longer exists or if self.pid is None
+			sleep(0.05)
 			while self.is_running:
 				msg = f"[stream_stop]  Waiting for child process '{self.name}' to terminate..."
 				if self.stream_log:
@@ -172,9 +245,20 @@ class VLCAudioStreamer(VLCAudioBase):
 		else:
 			msg = f"[stream_stop]  Popen process for VLCAudioStreamer '{self.name}' is None!"
 			if self.stream_log:
-				self.stream_log.error(msg)
+				self.stream_log.warning(msg)
 			else:
 				print(f'ERROR: {msg}')
+		if redundant_kill:
+			try:
+				if pid != -1:
+					msg = f">>> Redundant kill:  Now killing '{self.name}' with PID {pid}"
+					if self.stream_log:
+						self.stream_log.info(msg)
+					else:
+						print(f'\n{msg}')
+					os.kill(pid, SIGKILL)	## DON'T EVER call os.kill() for pid -1!!
+			except (ProcessLookupError, TypeError):
+				pass 	## Ignore errors if the stream process no longer exists or if self.pid is None
 		self.update_state("STOPPED")
 		
 
@@ -186,9 +270,17 @@ class VLCAudioStreamer(VLCAudioBase):
 ### --sout "#transcode{acodec=mpga,ab=256,aenc=ffmpeg,channels=2,samplerate=44100,threads=2}:std{access=file,mux=wav,dst=output.wav}" \
 ### rtp://@127.0.0.1:1234 vlc://quit &
 
+"""
+~ Listening Example ~
+[YetiAudioListener_0] Listen Command: 
+	cvlc -q --no-sout-video --sout-audio --ttl=1 --sout-keep --sout "#transcode{  \
+	acodec=mpga,ab=256,aenc=ffmpeg,channels=2,samplerate=44100,threads=2}:std{    \
+	access=file,mux=wav,dst=output0.wav}" rtp://@127.0.0.1:1234 vlc://quit &
+"""
+
 class VLCAudioListener(VLCAudioBase):
 	def __init__(self, name, audio_settings, capture_format='wav', capture_duration=30, 
-						verbose_level=0, executable='cvlc', protocol='rtp', logger=None):
+				verbose_level=0, executable='cvlc', protocol='rtp', logger=None, use_nohup=True):
 		super().__init__(audio_settings, verbose_level, executable, protocol)
 		self.name = name 
 		self.clip_format = capture_format.lower()
@@ -196,6 +288,13 @@ class VLCAudioListener(VLCAudioBase):
 		self.__state = "STOPPED"
 		self.process = None
 		self.listen_log = logger
+		self.__last_cmd_used_shell = False
+		self.nohup = use_nohup
+
+
+	@property
+	def state(self):
+		return self.__state
 
 
 	@property
@@ -218,22 +317,19 @@ class VLCAudioListener(VLCAudioBase):
 
 
 	@property
-	def listen_cmd(self):
+	def listen_cmd(self): 	#, nohup=True): 	#nohup=False):
 		self.__listen_cmd = f'{self.vlc} {self.opt_str} --sout "{self.sout}" {self.input_stream} vlc://quit &'
+		if self.nohup:
+			self.__listen_cmd = 'nohup ' + self.__listen_cmd
 		return self.__listen_cmd
-
-
-	def display_listen_command(self):
-		msg = f"[{self.name}]  Listen Command: {self.listen_cmd}"
-		if self.listen_log:
-			self.listen_log.info(msg)
-		else:
-			print(f'\n{msg}')
 
 
 	@property
 	def pid(self):
 		return self.process.pid if self.process else None
+		## ^ NOTE: If Popen process was created with shell=True, then process.pid will return PID of parent shell ('sh <defunct>').
+		## ^^ If this is the case, then 'process.kill()' or 'process.terminate()' will NOT kill the spawned VLC job.
+		## ^^^ See:  https://stackoverflow.com/questions/31039972/python-subprocess-popen-pid-return-the-pid-of-the-parent-script
 
 
 	@property
@@ -248,6 +344,14 @@ class VLCAudioListener(VLCAudioBase):
 		elif not running and self.__state != "STOPPED":
 			self.update_state("STOPPED")
 		return running 
+
+
+	def display_listen_command(self):
+		msg = f"[{self.name}]  Listen Command: {self.listen_cmd}"
+		if self.listen_log:
+			self.listen_log.info(msg)
+		else:
+			print(f'\n{msg}')
 
 
 	def set_recording_duration(self, duration):
@@ -267,9 +371,9 @@ class VLCAudioListener(VLCAudioBase):
 				print(f'\n{msg}')
 
 
-	def listen_start(self, use_shlex=False, use_shell=True):
+	def listen_start(self, use_shell=False): 	#use_shell=True):
 		if not self.is_running:
-			cmd = self.listen_cmd if not use_shlex else shlex.split(self.listen_cmd)
+			cmd = self.listen_cmd if use_shell else shlex.split(self.listen_cmd)
 			msg = f"[{self.name}]  Listener recording new clip:  '{self.__current_clip_name}'"
 			if self.listen_log:
 				self.listen_log.info(msg)
@@ -283,17 +387,28 @@ class VLCAudioListener(VLCAudioBase):
 				self.listen_log.info(msg)
 			else:
 				print(msg)
+		self.__last_cmd_used_shell = use_shell
 
 
 	def listen_stop(self, redundant_kill=False):
+		pid = self.pid
 		if self.process:
-			self.process.kill()
-			if redundant_kill:
-				try:
-					if self.pid != -1:
-						os.kill(self.pid, SIGKILL)	## DON'T call os.kill() for pid -1!!
-				except (ProcessLookupError, TypeError):
-					pass
+			if not self.__last_cmd_used_shell:
+				self.process.kill()
+			else:
+				for p in os.popen(f'pidof vlc').read()[:-1].split(' '):
+					try:
+						found_pid = int(p)
+						if found_pid == pid or found_pid == (pid + 1) or found_pid == (pid + 2):
+							msg = f"[listen_stop]  Now killing VLC child with PID {found_pid}"
+							if self.listen_log:
+								self.listen_log.info(msg)
+							else:
+								print(msg)
+							os.kill(found_pid, SIGKILL)
+					except (ProcessLookupError, TypeError):
+						pass	## Ignore errors if the stream process no longer exists or if self.pid is None
+			sleep(0.05)
 			while self.is_running:
 				msg = f"[listen_stop]  Waiting for child process '{self.name}' to terminate..."
 				if self.listen_log:
@@ -311,9 +426,20 @@ class VLCAudioListener(VLCAudioBase):
 		else:
 			msg = f"[listen_stop]  Popen process for VLCAudioListener '{self.name}' is None!"
 			if self.listen_log:
-				self.listen_log.error(msg)
+				self.listen_log.warning(msg)
 			else:
 				print(f'ERROR: {msg}')
+		if redundant_kill:
+			try:
+				if pid != -1:
+					msg = f">>> Redundant kill:  Now killing '{self.name}' with PID {pid}"
+					if self.listen_log:
+						self.listen_log.info(msg)
+					else:
+						print(f'\n{msg}')
+					os.kill(pid, SIGKILL)	## DON'T call os.kill() for pid -1!!
+			except (ProcessLookupError, TypeError):
+				pass	## Ignore errors if the stream process no longer exists or if self.pid is None
 		self.update_state("STOPPED")
 
 

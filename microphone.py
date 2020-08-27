@@ -8,7 +8,7 @@ import traceback
 import datetime as dt
 from urllib3.exceptions import NewConnectionError
 from multiprocessing import Queue, Process, Lock, Value 
-from vlc_audio import VLCAudioSettings, VLCAudioStreamer, VLCAudioListener
+from vlc_audio_util import VLCAudioSettings, VLCAudioStreamer, VLCAudioListener
 
 """
 To receive the audio stream from another machine, simply run the command:
@@ -21,6 +21,7 @@ To receive the audio stream from another machine, simply run the command:
 SEGREGATED_TEST_MODE = True  ## Set to False for deployment and integration testing w/ Alcazar CnC API
 DRY_RUN = SEGREGATED_TEST_MODE and True  ## Will skip any network-dependent tasks if set to True (i.e., posting to the CDN or Kafka)
 
+DEBUG = True
 CHECK_FOR_MISSING_DEPENDENCY = True #False   ## Will check that the prerequisite VLC is installed 
 INSTALL_MISSING_DEPENDENCY = CHECK_FOR_MISSING_DEPENDENCY and False 	## If True, will attempt to install VLC if missing;
 																		## else, program will abort with exit code 2 if VLC isn't installed
@@ -95,7 +96,7 @@ else:
 			self.log_to_console(f'[INFO]  {msg}')
 
 		def critical(self, msg):
-			self.log_to_console(f'[INFO]  {msg}')
+			self.log_to_console(f'[CRITICAL]  {msg}')
 
 
 ##=============================================================================
@@ -103,6 +104,31 @@ else:
 
 cdn_url = os.getenv('CDNURL', 'pipeline-cdn.telemetry.svc.kube.local')
 cdn_port = os.getenv('CDNPORT', '5000')
+
+##=============================================================================
+## Debug functions
+
+def get_pid_list_for(proc_name):
+	pidof_res = os.popen(f'pidof {proc_name}').read()[:-1]
+	return pidof_res.split(' ')
+
+
+def print_proc_info(process=None, pname=None):
+	info_banner = "-"*80
+	print(f"{info_banner}\nLast background job PID:  {os.popen('echo $?').read()[:-1]}\n")
+	if process and hasattr(process, 'pid'):
+		if pname:
+			print(f"Recent {pname} process PID:  {process.pid}")
+		else:
+			print(f"Recent process PID:  {process.pid}")
+	vlc_pids = get_pid_list_for('vlc')
+	print("\nVLC PIDs:")
+	for pid in vlc_pids:
+		print(f"\t{pid}")
+	# print(f"\nPS:  {os.popen('ps').read()}")
+	# print(f"\nJobs:  {os.popen('jobs -l').read()}")
+	print(f"{info_banner}\n")
+
 
 ##=============================================================================
 
@@ -123,7 +149,7 @@ class MicrophoneSensor(SensorBase):
 		self.room = component_site
 		self.microphone_number = mic_number
 
-		self.stream_name = f"YetiAudioStream_{self.microphone_number}"
+		self.stream_name = f"YetiAudioStreamer_{self.microphone_number}"
 		self.listener_name = f"YetiAudioListener_{self.microphone_number}"
 		self.loopback_name = f"loopback_{self.microphone_number}"
 		self.__device_name = None
@@ -136,6 +162,7 @@ class MicrophoneSensor(SensorBase):
 
 		self.my_logger = get_logger('microphone')
 		self.my_logger.info('[{}]  My id: {}'.format(self.__class__.__name__, self.component_id))
+		self.my_logger.info('[{}]  Device MRL: {}'.format(self.__class__.__name__, self.stream_mrl))
 		self.update_state("Initializing")
 
 		if not SEGREGATED_TEST_MODE:
@@ -174,17 +201,34 @@ class MicrophoneSensor(SensorBase):
 
 		self.settings = VLCAudioSettings(self.stream_mrl, self.loop_mrl, self.CODEC, self.CHANNELS, self.SAMPLERATE, self.BITRATE)
 
-		self.streamer = VLCAudioStreamer(self.stream_name, self.settings, self.stream_rtp_addr, dest_port=self.stream_rtp_port, 
-				loopback_addr=self.loopback_addr, loopback_port=self.loopback_port, loopback_name=self.loopback_name,
-				verbose_level=self.verbose_level, executable=self.vlc_exe, protocol=self.streaming_protocol, logger=self.my_logger)
-		## For DEBUG:
-		# self.streamer.display_stream_command()
+		self.streamer = VLCAudioStreamer(self.stream_name, 
+										 self.settings, 
+										 self.stream_rtp_addr, 
+										 dest_port=self.stream_rtp_port, 
+										 loopback_addr=self.loopback_addr, 
+										 loopback_port=self.loopback_port, 
+										 loopback_name=self.loopback_name,
+										 verbose_level=self.verbose_level, 
+										 executable=self.vlc_exe, 
+										 protocol=self.streaming_protocol, 
+										 logger=self.my_logger, 
+										 use_nohup=True
+										)
+		if DEBUG:
+			self.streamer.display_stream_command()
 
-		self.listener = VLCAudioListener(self.listener_name, self.settings, 
-				capture_format=self.recording_format, capture_duration=self.file_duration, 
-				verbose_level=self.verbose_level, executable=self.vlc_exe, protocol=self.streaming_protocol, logger=self.my_logger)
-		## For DEBUG:
-		# self.listener.display_listen_command()
+		self.listener = VLCAudioListener(self.listener_name, 
+										 self.settings, 
+										 capture_format=self.recording_format, 
+										 capture_duration=self.file_duration, 
+										 verbose_level=self.verbose_level, 
+										 executable=self.vlc_exe, 
+										 protocol=self.streaming_protocol, 
+										 logger=self.my_logger, 
+										 use_nohup=True
+										)
+		if DEBUG:
+			self.listener.display_listen_command()
 
 
 		## Processes
@@ -216,7 +260,13 @@ class MicrophoneSensor(SensorBase):
 		if self.__device_name is None:
 			try:
 				self.__device_name = [card[card.find('[')+1:card.find(']')].strip() for card in os.popen('cat /proc/asound/cards').read().split('\n') if all(x in card for x in ['Yeti', '['])][0]
-			except:
+			except IndexError:
+				device_list = [card[card.find('[')+1:card.find(']')].strip() for card in os.popen('cat /proc/asound/cards').read().split('\n') if ']' in card]
+				if len(device_list) > 0:
+					self.__device_name = device_list[0]
+				else:
+					self.__device_name = 'Microphone'
+			except Exception:
 				self.__device_name = 'Microphone'
 		return self.__device_name
 
@@ -240,13 +290,17 @@ class MicrophoneSensor(SensorBase):
 	def get_audio(self, hash_q, duration_lock, calibration_flag, calibration_lock):
 		self.my_logger.info('[get_audio]  Audio Process Successfully Started')
 		self.my_logger.info(f'[get_audio]  Initializing VLC live-stream of audio data to target address ({self.stream_target_url})')
-		self.streamer.stream_start()
+		self.streamer.stream_start() 	#use_shell=True)
+		if DEBUG:
+			print_proc_info(process=self.streamer.process, pname="VLCAudioStreamer")
 		self.update_state("Streaming")
 		time.sleep(3)   ## Slight delay to allow VLC stream to init && stabilize
+
 		calibrating = False
 		self.my_logger.info(f'[get_audio]  Initializing VLC loopback listener for recording audio data ({self.loop_mrl})')
 		self.my_logger.info('[get_audio]  Recording...')
 		self.update_state("Recording")
+
 		while True:
 			if self.duration_update:
 				self.update_state("Changing recording duration")
@@ -263,16 +317,20 @@ class MicrophoneSensor(SensorBase):
 					self.update_state("Calibrating")
 					calibrating = True
 					self.my_logger.info("[get_audio]  Beginning Calibration")
+
 			try:
 				record_seconds = self.listener.recording_duration if not calibrating else self.calibration_duration
 				clip_start_time = SensorBase._get_timestamp()
 				capture_ts = time.time()
-				self.listener.listen_start()
+				self.listener.listen_start() 	#use_shell=True)
+				if DEBUG:
+					print_proc_info(process=self.listener.process, pname="VLCAudioListener")
 				while (time.time() - capture_ts) <= record_seconds:
 					time.sleep(0.1)
 				self.listener.listen_stop()
 				clip_end_time = SensorBase._get_timestamp()
 				temp_recording_name = self.listener.get_recent_clip()
+
 				if os.path.isfile(temp_recording_name):
 					hash_q.put((temp_recording_name, clip_start_time, clip_end_time, calibrating))
 				else:
@@ -284,14 +342,17 @@ class MicrophoneSensor(SensorBase):
 					with calibration_lock:
 						calibration_flag.value = 0
 					self.update_state("Recording")
+
 			except Exception as exc_1:
 					self.my_logger.error("[get_audio]  Error in get_audio: {}".format(exc_1))
 
 				
-	def kill_all_vlc(self):
+	def kill_all_vlc(self, redundant_kill=False):
 		self.my_logger.info(f"\n[{self.__class__.__name__}]  Aborting: Terminating all VLC activities.")
 		self.listener.listen_stop()
 		self.streamer.stream_stop()
+		if redundant_kill:
+			os.system('pkill vlc')
 	
 
 	def hash_audio_for_post(self, hash_q, post_q):

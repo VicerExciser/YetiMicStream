@@ -328,11 +328,12 @@ duplicate{dst=display,dst=rtp{mux=ts,dst=239.255.12.42,sdp=sap,name="TestStream"
 dst=rtp{mux=ts,dst=192.168.1.2}}'
 
 
+====================== (Example shell commands)
+
+[YetiAudioStreamer_0] Stream Command: cvlc -q --no-sout-video --sout-audio --ttl=1 --sout-keep --sout "#transcode{acodec=mpga,ab=256,aenc=ffmpeg,channels=2,samplerate=44100,threads=2}:duplicate{dst=rtp{mux=ts,dst=239.255.12.42,port=1234,sdp=sap,name='YetiAudioStream_0'},dst=rtp{mux=ts,dst=127.0.0.1,port=1234,sdp=sap,name='loopback_0'}}" alsa://hw:Microphone &
 
 
-
-
-
+[YetiAudioListener_0] Listen Command: cvlc -q --no-sout-video --sout-audio --ttl=1 --sout-keep --sout "#transcode{acodec=mpga,ab=256,aenc=ffmpeg,channels=2,samplerate=44100,threads=2}:std{access=file,mux=wav,dst=/home/ac/Desktop/YetiMicStream/output1.wav}" rtp://@127.0.0.1:1234 vlc://quit &
 
 
 
