@@ -1,5 +1,1 @@
-pyaudio
 requests
-numpy
-pyyaml
-psutil

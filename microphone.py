@@ -1,11 +1,11 @@
 import os
 import sys
 import time
+import shutil
 import hashlib
-import datetime as dt
 import requests
 import traceback
-import shutil
+import datetime as dt
 from urllib3.exceptions import NewConnectionError
 from multiprocessing import Queue, Process, Lock, Value 
 from vlc_audio import VLCAudioSettings, VLCAudioStreamer, VLCAudioListener
@@ -18,8 +18,12 @@ To receive the audio stream from another machine, simply run the command:
 			$  vlc -vv rtp://@239.255.12.42:1234
 """
 
-SEGREGATED_TEST_MODE = True  ## Set to False for integration testing w/ Alcazar CnC API
-DRY_RUN = True  ## Will skip any network-dependent tasks if set to True (i.e., posting to the CDN or Kafka)
+SEGREGATED_TEST_MODE = True  ## Set to False for deployment and integration testing w/ Alcazar CnC API
+DRY_RUN = SEGREGATED_TEST_MODE and True  ## Will skip any network-dependent tasks if set to True (i.e., posting to the CDN or Kafka)
+
+CHECK_FOR_MISSING_DEPENDENCY = True #False   ## Will check that the prerequisite VLC is installed 
+INSTALL_MISSING_DEPENDENCY = CHECK_FOR_MISSING_DEPENDENCY and False 	## If True, will attempt to install VLC if missing;
+																		## else, program will abort with exit code 2 if VLC isn't installed
 
 if not SEGREGATED_TEST_MODE:
 	from alcazar_common.cnc.cnc_base import SensorBase
@@ -136,6 +140,8 @@ class MicrophoneSensor(SensorBase):
 
 		if not SEGREGATED_TEST_MODE:
 			self.add_message_callback(model.ControlMessageSubtypes.Microphone.value, self.do_parse_control_message)
+		else:
+			self.add_message_callback('Microphone', self.do_parse_control_message)
 		
 		## The duration multiplier accounts for sample rate skew between the Blue Yeti and real time (Time is in seconds)
 		self.sampling_multiplier = 1.036
@@ -444,15 +450,19 @@ class MicrophoneSensor(SensorBase):
 	def do_reboot(self, validated_message):
 		self.do_activate(validated_message)
 
+
 	def do_refresh(self, validated_message):
 		self.do_reboot(validated_message)
+
 
 	def do_activate(self, validated_message):
 		self.set_ready(True)  # calls cnc_base's send_heartbeat()
 
+
 	def do_deactivate(self, validated_message):
 		self.set_ready(False)
 		self.update_state("Deactivated")
+
 
 	def shutdown(self):
 		self.kill_all_vlc()
@@ -460,6 +470,7 @@ class MicrophoneSensor(SensorBase):
 		self.hash_process.join(timeout=5)
 		self.audio_process.join(timeout=5)
 		super(MicrophoneSensor, self).shutdown()
+
 
 	def do_parse_control_message(self, validated_message):
 		self.my_logger.info(f'[do_parse_control_message]  Received: {validated_message}')
@@ -495,7 +506,7 @@ class MicrophoneSensor(SensorBase):
 
 	def send_acknowledgement(self, command, message_reference):
 		if SEGREGATED_TEST_MODE:
-			self.send_alert("ACK", 6, 2, 'Command Acknowledgement', f"Acknowledgement of: {command}", None, [message_reference])
+			self.send_alert('Acknowledgement', 6, 2, 'Command Acknowledgement', f"Acknowledgement of: {command}", None, [message_reference])
 		else:
 			self.send_alert(model.AlertMessageSubtypes.Acknowledgement.value, 6, 2, 'Command Acknowledgement', f"Acknowledgement of: {command}", None, [message_reference])
 		self.my_logger.info('[send_acknowledgement]  Acknowledgement Sent')
@@ -530,6 +541,11 @@ if __name__ == "__main__":
 			room = os.environ.get('ROOM', 'UnknownRoom')
 			mic_number = os.environ.get('MIC_NUM', '0')
 			sensor = MicrophoneSensor(room, int(mic_number))
+
+			if CHECK_FOR_MISSING_DEPENDENCY: 	## Check that vlc/cvlc is installed
+				if not os.popen('which vlc').read() and sys.platform.lower() == 'linux':
+					raise Exception('Missing Dependency: VLC must be installed')
+			
 			sensor.start()
 			sensor.my_logger.info("[main]  Starting Audio Process ...")
 			sensor.audio_process.start()
@@ -544,13 +560,13 @@ if __name__ == "__main__":
 					if data['details']['calibration_flag']:
 						sensor.update_state("Recording_")
 						if SEGREGATED_TEST_MODE:
-							sensor.send_alert("Status", 5, 2, 'Microphone Calibration CDN Hash', data['text'], data['details'])
+							sensor.send_alert('Status', 5, 2, 'Microphone Calibration CDN Hash', data['text'], data['details'])
 						else:
 							sensor.send_alert(model.AlertMessageSubtypes.Status.value, 5, 2, 'Microphone Calibration CDN Hash', data['text'], data['details'])
 						sensor.my_logger.info(f"[main]  Calibration Alert sent to Kafka: {data['text']}")
 					else:
 						if SEGREGATED_TEST_MODE:
-							sensor.send_alert("Status", 5, 2, 'Microphone CDN Hash', data['text'], data['details'])
+							sensor.send_alert('Status', 5, 2, 'Microphone CDN Hash', data['text'], data['details'])
 						else:
 							sensor.send_alert(model.AlertMessageSubtypes.Status.value, 5, 2, 'Microphone CDN Hash', data['text'], data['details'])
 						sensor.my_logger.info(f"[main]  Hash Alert sent to Kafka: {data['text']}")
@@ -572,5 +588,29 @@ if __name__ == "__main__":
 				sensor.my_logger.error(exc)
 			else:
 				print(exc)
+
+			if CHECK_FOR_MISSING_DEPENDENCY:
+				exc_str = str(exc).lower()
+				if 'vlc' in exc_str and 'missing dependency' in exc_str:
+					if INSTALL_MISSING_DEPENDENCY:
+						msg = 'Attempting to install missing dependency (VLC) ...'
+					else:
+						msg = 'ABORTING until missing dependency (VLC) can be installed!'
+
+					if sensor is not None:
+						sensor.my_logger.critical(msg)
+					else:
+						print(msg)
+
+					if INSTALL_MISSING_DEPENDENCY:
+						# install_cmd = 'brew cask install vlc' if sys.platform.lower() == 'darwin' else 'apt-get install -y vlc'
+						install_cmd = 'apt-get install -y vlc'
+						if not os.popen(install_cmd).read():
+							os.system(f'sudo {install_cmd}')
+					else:
+						sys.exit(2)
+
+
+
 
 ##=============================================================================
