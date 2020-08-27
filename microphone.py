@@ -17,6 +17,9 @@ To receive the audio stream from another machine, simply run the command:
 			$  vlc rtp://@<stream IP address>:<stream port>
 	e.g.,
 			$  vlc -vv rtp://@239.255.12.42:1234
+
+NOTE: 	This module absolutely requires the 'vlc' package be installed via 'apt', and
+		the 'requests' Python module installed via 'pip3'.
 """
 
 SEGREGATED_TEST_MODE = True  ## Set to False for deployment and integration testing w/ Alcazar CnC API
@@ -101,7 +104,7 @@ else:
 
 
 ##=============================================================================
-## TODO: Extract other globals from the MicrophoneSensor class && add here
+## TODO (optional): Extract other globals from the MicrophoneSensor class && add here?
 
 cdn_url = os.getenv('CDNURL', 'pipeline-cdn.telemetry.svc.kube.local')
 cdn_port = os.getenv('CDNPORT', '5000')
@@ -132,10 +135,9 @@ class MicrophoneSensor(SensorBase):
 	"""
 	Subclass for a Yeti Microphone.
 	Inherits from and implements the CNCBase abstract class.
-	"""
-	""" TODO
-		TODO
-		TODO
+	Responsible for managing a constant VLCAudioStreamer instance for hosting an audio live-feed,
+	as well as a toggling VLCAudioListener instance for receiving, processing, and saving audio clips 
+	in parallel as the stream runs.
 	"""
 	RECALIB_ON_REBOOT = True
 	MAX_VLC_INSTANCES = 2
@@ -257,10 +259,7 @@ class MicrophoneSensor(SensorBase):
 
 	@property
 	def device_name(self):
-		""" TODO
-			TODO
-			TODO
-		"""
+		""" Returns the Yeti mic's sound card alias relative to alsa (typically just shows as 'Microphone'). """
 		if self.__device_name is None:
 			try:
 				self.__device_name = [card[card.find('[')+1:card.find(']')].strip() for card in os.popen('cat /proc/asound/cards').read().split('\n') if all(x in card for x in ['Yeti', '['])][0]
@@ -277,32 +276,26 @@ class MicrophoneSensor(SensorBase):
 
 	@property
 	def stream_mrl(self):
-		""" Returns the Media Resource Locator (MRL) for the Yeti mic to be used as an audio input with VLC. """
+		""" Returns the Media Resource Locator (MRL) for the Yeti mic to be used as an audio input for streaming with VLC. """
 		return f"alsa://hw:{self.device_name}" if sys.platform != "darwin" else "qtsound://"
 
 
 	@property
 	def loop_mrl(self):
-		""" TODO
-			TODO
-			TODO
-		"""
+		""" The loopback Media Resource Locator (MRL) to serve as the stream input for the VLCAudioListener instance. """
 		return f"rtp://@{self.loopback_addr}:{self.loopback_port}"
 
 
 	@property
 	def stream_target_url(self):
-		""" TODO
-			TODO
-			TODO
-		"""
+		""" The target IP address to cast the audio live-stream; uses the RTP protocol.	"""
 		return f"rtp://@{self.stream_rtp_addr}:{self.stream_rtp_port}"
 
 
 	def get_audio(self, hash_q, duration_lock, calibration_flag, calibration_lock):
-		""" TODO
-			TODO
-			TODO
+		""" 
+		Process for streaming live audio data and simultaneously listening to the live feed 
+		for recording audio clips to be posted to the CDN.
 		"""
 		self.my_logger.info('[get_audio]  Audio Process Successfully Started')
 		self.my_logger.info(f'[get_audio]  Initializing VLC live-stream of audio data to target address ({self.stream_target_url})')
@@ -389,10 +382,7 @@ class MicrophoneSensor(SensorBase):
 	
 
 	def hash_audio_for_post(self, hash_q, post_q):
-		""" TODO
-			TODO
-			TODO
-		"""
+		""" Hashing / audio processing process. """
 		self.my_logger.info('[hash_audio_for_post]  Hash Process Successfully Started')
 		while True:
 			while not hash_q.empty():
@@ -411,10 +401,7 @@ class MicrophoneSensor(SensorBase):
 
 					
 	def hash_rename(self, post_q, audio_name="output0.wav", calibration_flag=False):
-		""" TODO
-			TODO
-			TODO
-		"""
+		""" Rename the audio file specified by 'audio_name' from its temporary name to its SHA1 hash. """
 		try:
 			with open(audio_name, 'rb') as f:
 				audio_data = f.read()
@@ -429,10 +416,7 @@ class MicrophoneSensor(SensorBase):
 				
 
 	def add_to_post_q(self, post_q, filename, calibration_flag=False):
-		""" TODO
-			TODO
-			TODO
-		"""
+		""" Add the new audio recording specified by 'filename' and its metadata to the CDN post queue. """
 		filesize = os.path.getsize(filename)
 		## Put all the data into the posting queue as a dictionary for easy unpacking
 		post_q.put({
@@ -562,7 +546,7 @@ class MicrophoneSensor(SensorBase):
 
 
 	def do_activate(self, validated_message):
-		self.set_ready(True)  # calls cnc_base's send_heartbeat()
+		self.set_ready(True)  	## Calls cnc_base's send_heartbeat()
 
 
 	def do_deactivate(self, validated_message):
@@ -694,11 +678,12 @@ if __name__ == "__main__":
 						if new_nohup_out_size > nohup_out_size:
 							sensor.my_logger.info(f"[main]  New file size of '{nohup_file}':  {new_nohup_out_size} Bytes")
 							nohup_out_size = new_nohup_out_size
-						## If the nohup.out file grows too large, cat /dev/null to it to clear the file contents without stopping the nohup process
+						## If the 'nohup.out' file grows too large, cat /dev/null to it to clear the file contents without stopping the nohup process
 						if nohup_out_size > 20000:
 							os.system(f'cat /dev/null > {nohup_file}')
 					except (OSError, FileNotFoundError) as nohup_exc:
-						sensor.my_logger.error("Error occurred in main loop regarding nohup.out file management: {}".format(nohup_exc))
+						# sensor.my_logger.error("Error occurred in main loop regarding nohup.out file management: {}".format(nohup_exc))
+						pass  	## Ignore if 'nohup.out' does not yet exist
 
 				# time.sleep(0.1)
 			## Do sensor.shutdown()?

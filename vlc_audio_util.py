@@ -7,9 +7,9 @@ import shlex
 
 ##=============================================================================
 
-""" TODO
-	TODO
-	TODO
+""" 
+Dataclass representing specific audio configurations for the VLC commmands that are 
+used for duplicate streaming and simultaneous listening of USB microphone audio data.
 """
 @dataclass
 class VLCAudioSettings:
@@ -30,9 +30,8 @@ class VLCAudioSettings:
 ##=============================================================================
 
 class VLCAudioBase():
-	""" TODO
-		TODO
-		TODO
+	""" 
+	Base class from which the VLCAudioStreamer and VLCAudioListener subclasses inherit.
 	"""
 	def __init__(self, audio_settings, verbose_level, executable, protocol):
 		assert isinstance(audio_settings, VLCAudioSettings)
@@ -44,19 +43,13 @@ class VLCAudioBase():
 
 	@property
 	def opt_str(self):
-		""" TODO
-			TODO
-			TODO
-		"""
+		""" Returns the global VLC options shared by both streamers and listeners. """
 		return f'{self.v_opt} --no-sout-video --sout-audio --ttl=1 --sout-keep'
 	
 
 	@property
 	def input_stream(self):
-		""" TODO
-			TODO
-			TODO
-		"""
+		""" Returns the appropriate audio input_stream MRL to be given to VLC commands. """
 		if isinstance(self, VLCAudioStreamer):
 			return self.cfg.tx_mrl
 		elif isinstance(self, VLCAudioListener):
@@ -66,9 +59,8 @@ class VLCAudioBase():
 
 	@property
 	def transcode_str(self):
-		""" TODO
-			TODO
-			TODO
+		""" 
+
 		"""
 		## Alternatively, could make this a method within the VLCAudioSettings dataclass 
 		return ''.join([
@@ -81,9 +73,8 @@ class VLCAudioBase():
 
 
 	def update_audio_settings(self, new_settings):
-		""" TODO
-			TODO
-			TODO
+		""" 
+
 		"""
 		if isinstance(new_settings, VLCAudioSettings):
 			self.cfg = new_settings 	 ## Must be an `AudioSettings` dataclass instance
@@ -104,9 +95,8 @@ class VLCAudioBase():
 	dst=rtp{mux=ts,dst=127.0.0.1,port=1234,sdp=sap,name='loopback_0'}}" alsa://hw:Microphone &
 """
 class VLCAudioStreamer(VLCAudioBase):
-	""" TODO
-		TODO
-		TODO
+	""" 
+	TODO
 	"""
 	def __init__(self, name, audio_settings, dest_ip_address, dest_port=1234, 
 				loopback_addr='127.0.0.1', loopback_port=1234, loopback_name='loopback', 
@@ -319,11 +309,9 @@ class VLCAudioStreamer(VLCAudioBase):
 	acodec=mpga,ab=256,aenc=ffmpeg,channels=2,samplerate=44100,threads=2}:std{    \
 	access=file,mux=wav,dst=output0.wav}" rtp://@127.0.0.1:1234 vlc://quit &
 """
-
 class VLCAudioListener(VLCAudioBase):
-	""" TODO
-		TODO
-		TODO
+	""" 
+	TODO
 	"""
 	def __init__(self, name, audio_settings, capture_format='wav', capture_duration=30, 
 				verbose_level=0, executable='cvlc', protocol='rtp', logger=None, use_nohup=True):
@@ -345,9 +333,8 @@ class VLCAudioListener(VLCAudioBase):
 
 	@property
 	def clip_filename(self):
-		""" TODO
-			TODO
-			TODO
+		""" 
+			
 		"""
 		clip_num = 0
 		while f"output{clip_num}.{self.clip_format}" in (os.listdir()):
@@ -358,27 +345,24 @@ class VLCAudioListener(VLCAudioBase):
 
 	@property
 	def save_clip_str(self):
-		""" TODO
-			TODO
-			TODO
+		""" 
+
 		"""
 		return ''.join(["std{access=file,mux=", self.clip_format, ",dst=", self.clip_filename, "}"])
 	
 
 	@property
 	def sout(self):
-		""" TODO
-			TODO
-			TODO
+		""" 
+
 		"""
 		return f"#{self.transcode_str}:{self.save_clip_str}"
 
 
 	@property
 	def listen_cmd(self): 	#, nohup=True): 	#nohup=False):
-		""" TODO
-			TODO
-			TODO
+		""" 
+
 		"""
 		self.__listen_cmd = f'{self.vlc} {self.opt_str} --sout "{self.sout}" {self.input_stream} vlc://quit &'
 		if self.nohup:
@@ -449,9 +433,8 @@ class VLCAudioListener(VLCAudioBase):
 
 
 	def listen_start(self, use_shell=False): 	#use_shell=True):
-		""" TODO
-			TODO
-			TODO
+		"""
+
 		"""
 		if not self.is_running:
 			cmd = self.listen_cmd if use_shell else shlex.split(self.listen_cmd)
@@ -472,9 +455,8 @@ class VLCAudioListener(VLCAudioBase):
 
 
 	def listen_stop(self, redundant_kill=False):
-		""" TODO
-			TODO
-			TODO
+		""" 
+
 		"""
 		pid = self.pid
 		if self.process:
@@ -528,9 +510,8 @@ class VLCAudioListener(VLCAudioBase):
 
 
 	def get_recent_clip(self):
-		""" TODO
-			TODO
-			TODO
+		""" 
+		
 		"""
 		## FIXME: Is this really the best way to go about this? This may require the listener's own collection of unprocessed files,
 		##        in case of a pipeline backup (i.e., if CDN or Kafka communications issues occur)
